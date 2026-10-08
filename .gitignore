@@ -1,18 +1,28 @@
-*.iml
-.gradle
-.kotlin
-/local.properties
-/.idea/caches
-/.idea/libraries
-/.idea/modules.xml
-/.idea/workspace.xml
-/.idea/navEditor.xml
-/.idea/assetWizardSettings.xml
-.DS_Store
-/build
-/captures
-.externalNativeBuild
-.cxx
-local.properties
+# Dependencies
+node_modules/
+
+# Expo & Web
+.expo/
+dist/
+web-build/
+
+# Environment variables
 .env
-debug.keystore
+.env*.local
+
+# Logs and system files
+*.log
+.DS_Store
+Thumbs.db
+
+# IDE & Editor files
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+
+# Native artifacts (if prebuild is run)
+*.iml
+.gradle/
+build/
+local.properties

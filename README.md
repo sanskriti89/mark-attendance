@@ -1,22 +1,78 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# AttendIQ - Smart Classroom Attendance System
 
-# Run and deploy your AI Studio app
+**Guru Ghasidas Vishwavidyalaya (GGU), Bilaspur**  
+Smart campus attendance system featuring live teacher broadcasting, ultrasonic / GPS geofencing verification, student & faculty schedule hubs, and headcount discrepancy auditing.
 
-This contains everything you need to run your app locally.
+---
 
-View your app in AI Studio: https://ai.studio/apps/2d901eb2-29fd-49af-ac65-836cb0944f89
+## 🚀 Quick Start (Expo Go & Web)
 
-## Run Locally
+### Prerequisites
+- [Node.js](https://nodejs.org/) (v18+)
+- [Expo Go app](https://expo.dev/go) on your Android or iOS device (free on Google Play / App Store)
 
-**Prerequisites:**  [Android Studio](https://developer.android.com/studio)
+### 1. Install Dependencies
+```bash
+npm install
+```
 
+### 2. Start the Development Server
+```bash
+npx expo start
+```
 
-1. Open Android Studio
-2. Select **Open** and choose the directory containing this project
-3. Allow Android Studio to fix any incompatibilities as it imports the project.
-4. Create a file named `.env` in the project directory and set `GEMINI_API_KEY` in that file to your Gemini API key (see `.env.example` for an example)
-5. Remove this line from the app's `build.gradle.kts` file: `signingConfig = signingConfigs.getByName("debugConfig")`
-6. Run the app on an emulator or physical device
-7. If you have already published your app in AI Studio, please [request upload key reset](https://support.google.com/googleplay/android-developer/answer/9842756#zippy=%2Crequest-an-upload-key-reset) in Google Play Console.
+### 3. Open the App
+- **On Android / iPhone:** Open the **Expo Go** app and scan the QR code displayed in the terminal.
+- **In Web Browser:** Press `w` in the terminal (or open `http://localhost:8081`).
+- **Over different networks (hotspot/cellular):** Run `npx expo start --tunnel`.
+
+---
+
+## 📱 Features & Screens
+
+1. **Role Selection:** Split-screen interface for Teacher (Warm Orange) and Student (Deep Teal) with gesture controls.
+2. **Authentication:** Role-based Login and Register with GGU department picker modal.
+3. **ID Verification:** Institutional Smart Card verification.
+4. **Faculty Schedule Hub:** Daily teaching routine, room assignments, active teaching slots, and 1-tap "Start Attendance".
+5. **Student Academic Hub:** Live attendance alert banner, daily timetable, attendance tracking percentages, and NEP 2020 course breakdown.
+6. **Teacher Live Broadcast:** 2-digit PIN generation, countdown timer, live attendance progress bar, recent joins feed, and physical headcount audit.
+7. **Student Attendance:** GGU campus GPS geofence validation, 2-digit PIN entry with keypad, and slide-to-confirm button.
+8. **Attendance Reports:** Filterable roster (CSIT, CSE, IT, ECE), attendance toggle, discrepancy detection, and CSV export.
+9. **Quick Screen Switcher:** Floating developer tool at the bottom-right to jump directly to any of the 10 screens.
+
+---
+
+## 🛠️ Project Structure
+
+```text
+├── App.tsx                     # Main App Entry & Screen Navigator
+├── app.json                    # Expo Configuration
+├── index.ts                    # Expo Root Entrypoint
+├── package.json                # Dependencies & Scripts
+├── tsconfig.json               # TypeScript Configuration
+└── src/
+    ├── components/             # Reusable UI components (Keypad, SlideToConfirm, Picker, TopBar, Modals)
+    ├── context/                # AttendanceContext state management & business logic
+    ├── data/                   # Types, models, and GGU University department data
+    ├── screens/                # All 10 application screens
+    └── theme/                  # Brand colors & design tokens
+```
+
+---
+
+## 👥 Team Collaboration (Git Workflow)
+
+1. Check out the active branch:
+   ```bash
+   git checkout babua
+   ```
+2. Pull latest updates:
+   ```bash
+   git pull origin babua
+   ```
+3. Push your work:
+   ```bash
+   git add .
+   git commit -m "feat: your feature description"
+   git push origin babua
+   ```
