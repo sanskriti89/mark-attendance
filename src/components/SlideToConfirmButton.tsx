@@ -6,6 +6,8 @@ import {
   PanResponder,
   StyleSheet,
   LayoutChangeEvent,
+  Dimensions,
+  Platform,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors } from '../theme/colors';
@@ -25,105 +27,218 @@ export const SlideToConfirmButton: React.FC<SlideToConfirmButtonProps> = ({
   isConfirmed = false,
   enabled = true,
 }) => {
-  const [containerWidth, setContainerWidth] = useState(0);
-  const [confirmed, setConfirmed] = useState(isConfirmed);
-  const panX = useRef(new Animated.Value(0)).current;
-
   const thumbSize = 46;
+  const initialWidth = Dimensions.get('window').width - 40;
+  const [containerWidth, setContainerWidth] = useState(initialWidth);
+  const containerWidthRef = useRef(initialWidth);
+  const maxDragRef = useRef(Math.max(0, initialWidth - thumbSize - 6));
+
+  const panX = useRef(new Animated.Value(0)).current;
+  const mountedRef = useRef(true);
+
+  // Keep fresh references to props/state to avoid stale closure freeze in PanResponder
+  const stateRef = useRef({
+    enabled,
+    isConfirmed,
+    onConfirmed,
+  });
+
+  stateRef.current = {
+    enabled,
+    isConfirmed,
+    onConfirmed,
+  };
 
   useEffect(() => {
-    if (!isConfirmed && confirmed) {
-      setConfirmed(false);
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  const handleLayout = (e: LayoutChangeEvent) => {
+    const width = e.nativeEvent.layout.width;
+    if (width > 0 && Math.abs(width - containerWidthRef.current) > 1) {
+      containerWidthRef.current = width;
+      maxDragRef.current = Math.max(0, width - thumbSize - 6);
+      setContainerWidth(width);
+    }
+  };
+
+  // Sync pan position when isConfirmed changes externally
+  useEffect(() => {
+    if (isConfirmed) {
+      Animated.timing(panX, {
+        toValue: maxDragRef.current,
+        duration: 250,
+        useNativeDriver: false,
+      }).start();
+    } else {
       Animated.spring(panX, {
         toValue: 0,
+        friction: 7,
+        tension: 40,
         useNativeDriver: false,
       }).start();
     }
   }, [isConfirmed]);
 
-  const maxDrag = Math.max(0, containerWidth - thumbSize - 6);
-
   const panResponder = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => enabled && !confirmed && !isConfirmed,
-      onMoveShouldSetPanResponder: () => enabled && !confirmed && !isConfirmed,
+      onStartShouldSetPanResponder: () => {
+        const { enabled: isEn, isConfirmed: isConf } = stateRef.current;
+        return isEn && !isConf;
+      },
+      onMoveShouldSetPanResponder: (_, gestureState) => {
+        const { enabled: isEn, isConf } = {
+          enabled: stateRef.current.enabled,
+          isConf: stateRef.current.isConfirmed,
+        };
+        return isEn && !isConf && Math.abs(gestureState.dx) > 3;
+      },
+      // Prevent parent ScrollView from canceling the horizontal drag gesture
+      onPanResponderTerminationRequest: () => false,
+      onShouldBlockNativeResponder: () => true,
+      onPanResponderGrant: () => {
+        if (!stateRef.current.enabled || stateRef.current.isConfirmed) return;
+        panX.stopAnimation();
+      },
       onPanResponderMove: (_, gestureState) => {
-        if (enabled && !confirmed && !isConfirmed && maxDrag > 0) {
-          const clamped = Math.max(0, Math.min(maxDrag, gestureState.dx));
-          panX.setValue(clamped);
-        }
+        const { enabled: isEn, isConfirmed: isConf } = stateRef.current;
+        if (!isEn || isConf) return;
+
+        const maxDrag = maxDragRef.current;
+        if (maxDrag <= 0) return;
+
+        const clamped = Math.max(0, Math.min(maxDrag, gestureState.dx));
+        panX.setValue(clamped);
       },
       onPanResponderRelease: (_, gestureState) => {
-        if (!enabled || confirmed || isConfirmed || maxDrag <= 0) return;
+        const { enabled: isEn, isConfirmed: isConf, onConfirmed: onConf } = stateRef.current;
+        if (!isEn || isConf) return;
 
-        if (gestureState.dx >= maxDrag * 0.7) {
-          // Confirm
+        const maxDrag = maxDragRef.current;
+        if (maxDrag <= 0) return;
+
+        // Slide confirmed if dragged past 65% or with a quick rightward flick
+        const passedThreshold = gestureState.dx >= maxDrag * 0.65;
+        const isFlick = gestureState.dx > 40 && gestureState.vx > 0.4;
+
+        if (passedThreshold || isFlick) {
           Animated.spring(panX, {
             toValue: maxDrag,
+            friction: 8,
+            tension: 50,
             useNativeDriver: false,
           }).start(() => {
-            setConfirmed(true);
-            onConfirmed();
+            onConf();
+
+            // Safety check: if attendance was not completed (e.g., missing PIN), smoothly spring back
+            setTimeout(() => {
+              if (mountedRef.current && !stateRef.current.isConfirmed) {
+                Animated.spring(panX, {
+                  toValue: 0,
+                  friction: 6,
+                  tension: 35,
+                  useNativeDriver: false,
+                }).start();
+              }
+            }, 350);
           });
         } else {
-          // Reset
+          // Release early -> spring back to start
           Animated.spring(panX, {
             toValue: 0,
+            friction: 7,
+            tension: 40,
             useNativeDriver: false,
-            bounciness: 12,
+          }).start();
+        }
+      },
+      onPanResponderTerminate: () => {
+        if (mountedRef.current && !stateRef.current.isConfirmed) {
+          Animated.spring(panX, {
+            toValue: 0,
+            friction: 7,
+            tension: 40,
+            useNativeDriver: false,
           }).start();
         }
       },
     })
   ).current;
 
-  const handleLayout = (e: LayoutChangeEvent) => {
-    setContainerWidth(e.nativeEvent.layout.width);
-  };
+  const maxDrag = maxDragRef.current > 0 ? maxDragRef.current : Math.max(1, containerWidth - thumbSize - 6);
 
-  const isComplete = confirmed || isConfirmed;
+  // Background track fill width
+  const trackFillWidth = panX.interpolate({
+    inputRange: [0, maxDrag],
+    outputRange: [thumbSize, containerWidth],
+    extrapolate: 'clamp',
+  });
+
+  // Label fades out smoothly as thumb moves across
+  const textOpacity = panX.interpolate({
+    inputRange: [0, maxDrag * 0.55],
+    outputRange: [1, 0.12],
+    extrapolate: 'clamp',
+  });
 
   return (
-    <View style={styles.container} onLayout={handleLayout}>
+    <View
+      style={[
+        styles.container,
+        !enabled && styles.containerDisabled,
+        Platform.OS === 'web' && ({ userSelect: 'none', touchAction: 'none' } as any),
+      ]}
+      onLayout={handleLayout}
+    >
       {/* Background Track Fill */}
       <Animated.View
         style={[
           styles.trackFill,
           {
-            width: Animated.add(panX, new Animated.Value(thumbSize)),
-            backgroundColor: brandColor + '30',
+            width: trackFillWidth,
+            backgroundColor: isConfirmed ? Colors.emeraldCheck + '25' : brandColor + '25',
           },
         ]}
       />
 
       {/* Label in Center */}
-      <View style={styles.textContainer}>
+      <Animated.View
+        style={[
+          styles.textContainer,
+          { opacity: isConfirmed ? 1 : textOpacity },
+        ]}
+      >
         <Text
           style={[
             styles.titleText,
-            { color: isComplete ? Colors.emeraldCheck : Colors.slate600 },
+            { color: isConfirmed ? Colors.emeraldCheck : Colors.slate600 },
           ]}
         >
-          {isComplete ? 'CONFIRMED ✓' : title}
+          {isConfirmed ? 'CONFIRMED ✓' : title}
         </Text>
-        {!isComplete && (
+        {!isConfirmed && (
           <Text style={[styles.arrowHint, { color: brandColor }]}> »»</Text>
         )}
-      </View>
+      </Animated.View>
 
       {/* Draggable Circle Thumb */}
       <Animated.View
+        hitSlop={{ top: 15, bottom: 15, left: 15, right: 30 }}
         style={[
           styles.thumb,
           {
             transform: [{ translateX: panX }],
-            backgroundColor: isComplete ? Colors.emeraldCheck : brandColor,
+            backgroundColor: isConfirmed ? Colors.emeraldCheck : brandColor,
           },
+          Platform.OS === 'web' && ({ cursor: isConfirmed ? 'default' : 'grab' } as any),
         ]}
         {...panResponder.panHandlers}
       >
         <MaterialIcons
-          name={isComplete ? 'check' : 'arrow-forward'}
+          name={isConfirmed ? 'check' : 'arrow-forward'}
           size={22}
           color={Colors.white}
         />
@@ -143,6 +258,9 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     justifyContent: 'center',
     position: 'relative',
+  },
+  containerDisabled: {
+    opacity: 0.5,
   },
   trackFill: {
     position: 'absolute',

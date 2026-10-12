@@ -341,6 +341,7 @@ const styles = StyleSheet.create({
     color: Colors.liveRed,
   },
   slideWrapper: {
+    width: '100%',
     gap: 8,
     alignItems: 'center',
     marginTop: 4,

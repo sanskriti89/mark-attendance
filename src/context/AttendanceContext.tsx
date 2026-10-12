@@ -135,7 +135,7 @@ interface AttendanceContextType {
 
 const initialAttendanceRecords: StudentAttendanceRecord[] = [
   { sNo: '01', studentName: 'Santosh Rao', dept: 'CSIT', courseType: 'Major', isPresent: true, checkInTime: '10:14 AM', verificationMethod: 'GGU GPS + PIN' },
-  { sNo: '02', studentName: 'Alex Morgan', dept: 'CSE', courseType: 'Minor', isPresent: true, checkInTime: '10:15 AM', verificationMethod: 'GGU GPS + PIN' },
+  { sNo: '02', studentName: 'Sample Kumar', dept: 'CSE', courseType: 'Minor', isPresent: true, checkInTime: '10:15 AM', verificationMethod: 'GGU GPS + PIN' },
   { sNo: '03', studentName: 'Priya Sharma', dept: 'ECE', courseType: 'SEC', isPresent: true, checkInTime: '10:15 AM', verificationMethod: 'GGU GPS + PIN' },
   { sNo: '04', studentName: 'Rahul Verma', dept: 'CSIT', courseType: 'Major', isPresent: true, checkInTime: '10:16 AM', verificationMethod: 'GGU GPS + PIN' },
   { sNo: '05', studentName: 'Ananya Patel', dept: 'IT', courseType: 'VAC', isPresent: true, checkInTime: '10:16 AM', verificationMethod: 'GGU GPS + PIN' },

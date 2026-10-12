@@ -26,3 +26,6 @@ Thumbs.db
 .gradle/
 build/
 local.properties
+
+# Legacy / nested subprojects
+mark-attendance/
