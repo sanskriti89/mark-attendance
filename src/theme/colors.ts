@@ -36,6 +36,7 @@ export const Colors = {
   slate50: '#F8FAFC',
   cardBorder: '#E2E8F0',
   white: '#FFFFFF',
+  black: '#000000',
 
   // Department Badges
   deptCsitBg: '#EFF6FF',

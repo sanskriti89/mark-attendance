@@ -6,7 +6,16 @@ import { useAttendance } from '../context/AttendanceContext';
 import { CommonTopBar } from '../components/CommonTopBar';
 
 export const DocumentVerificationScreen: React.FC = () => {
-  const { currentRole, navigateTo } = useAttendance();
+  const {
+    currentRole,
+    navigateTo,
+    studentRegName,
+    studentRegEnrollment,
+    teacherRegName,
+    teacherRegFacultyId,
+    studentDepartment,
+    teacherDepartment,
+  } = useAttendance();
   const [docUploaded, setDocUploaded] = useState(true);
   const isTeacher = currentRole === 'TEACHER';
   const brandColor = isTeacher ? Colors.teacherOrange : Colors.studentTeal;
@@ -38,11 +47,11 @@ export const DocumentVerificationScreen: React.FC = () => {
             <Text style={styles.previewTitle}>Document Verified</Text>
             <Text style={styles.previewSub}>
               {isTeacher
-                ? 'FAC-CS-8924 • Dr. Eleanor Vance'
-                : '2024-BTECH-CS-042 • Alex Morgan'}
+                ? `${teacherRegFacultyId} • ${teacherRegName}`
+                : `${studentRegEnrollment} • ${studentRegName}`}
             </Text>
             <Text style={styles.deptSub}>
-              Dept of CSIT • School of Mathematical & Computational Sciences
+              Dept of {isTeacher ? teacherDepartment : studentDepartment} • Guru Ghasidas Vishwavidyalaya
             </Text>
           </View>
 
