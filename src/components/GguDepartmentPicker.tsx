@@ -177,7 +177,10 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 13,
     color: Colors.slate800,
-  },
+    outlineStyle: 'none',
+    borderWidth: 0,
+    backgroundColor: 'transparent',
+  } as any,
   list: {
     paddingHorizontal: 16,
   },

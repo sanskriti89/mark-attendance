@@ -24,8 +24,8 @@ export const TeacherDashboardScreen: React.FC = () => {
     setIsProfileSheetOpen,
   } = useAttendance();
 
-  const teacherName = teacherRegName || 'Dr. Eleanor Vance';
-  const department = teacherDepartment || 'CSIT';
+  const teacherName = teacherRegName || 'Faculty Member';
+  const department = teacherDepartment || 'GGU';
 
   const days = ['Today', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 

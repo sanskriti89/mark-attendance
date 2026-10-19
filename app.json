@@ -8,6 +8,12 @@
     "ios": {
       "supportsTablet": true
     },
+    "android": {
+      "package": "com.attendiq.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#ffffff"
+      }
+    },
     "web": {
       "bundler": "metro"
     }

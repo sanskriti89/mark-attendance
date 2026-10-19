@@ -10,27 +10,107 @@ import {
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors } from '../theme/colors';
 import { useAttendance } from '../context/AttendanceContext';
+import { api } from '../services/api';
 import { SlideToConfirmButton } from '../components/SlideToConfirmButton';
 
 export const StudentDashboardScreen: React.FC = () => {
   const {
     studentRegName,
     studentEnrollment,
-    studentScheduleList,
+    studentRegEnrollment,
+    studentDepartment,
+    studentCourseLevel,
+    studentEnrolledCourses,
     navigateTo,
     goBack,
     setIsProfileSheetOpen,
     uploadCustomTimetable,
     uploadedTimetableName,
     isBroadcasting,
+    broadcastSecondsLeft,
+    teacherRegName,
     activeSubjectCode,
     activeSubjectName,
     activeClassroom,
     gguOfficialCourses,
   } = useAttendance();
 
-  const studentName = studentRegName || 'ANAND MOHAN KUMAR';
-  const enrolmentNo = studentEnrollment || 'GGV/25/250/0024';
+  const studentName = studentRegName || studentEnrollment || 'Student';
+  const enrolmentNo = studentEnrollment || studentRegEnrollment || 'Pending Verification';
+
+  const normalizedRegisteredCourses = React.useMemo(() => {
+    if (studentEnrolledCourses && studentEnrolledCourses.length > 0) {
+      return studentEnrolledCourses.map((c, idx) => {
+        if (typeof c === 'object' && c !== null) {
+          return {
+            sNo: c.sNo || idx + 1,
+            courseCode: c.courseCode || `SUB${idx + 1}`,
+            courseName: c.courseName || c.courseCode || 'Course',
+            credits: c.credits || 3.0,
+            type: c.type || 'Major',
+            term: c.term || '3 SEMESTER',
+          };
+        }
+        const str = String(c);
+        const parts = str.split(':');
+        const code = parts[0]?.trim() || `SUB${idx + 1}`;
+        const name = parts[1]?.trim() || code;
+        return {
+          sNo: idx + 1,
+          courseCode: code,
+          courseName: name,
+          credits: 3.0,
+          type: 'Registered Subject',
+          term: 'Current Semester',
+        };
+      });
+    }
+    return gguOfficialCourses;
+  }, [studentEnrolledCourses, gguOfficialCourses]);
+
+  const totalCredits = React.useMemo(() => {
+    return normalizedRegisteredCourses.reduce((sum, c) => sum + (Number(c.credits) || 0), 0);
+  }, [normalizedRegisteredCourses]);
+
+  // Live session check from backend or local broadcast state
+  const [backendSession, setBackendSession] = React.useState<any>(null);
+  const [isRefreshingSession, setIsRefreshingSession] = React.useState(false);
+
+  const checkLiveSession = React.useCallback(async (showIndicator = false) => {
+    if (showIndicator) setIsRefreshingSession(true);
+    try {
+      const res = await api.getActiveSession();
+      if (res && res.success && res.hasActiveSession && res.session) {
+        setBackendSession(res.session);
+      } else {
+        setBackendSession(null);
+      }
+    } catch (e) {
+      // silently ignore network issues
+    } finally {
+      if (showIndicator) {
+        setTimeout(() => setIsRefreshingSession(false), 500);
+      }
+    }
+  }, []);
+
+  React.useEffect(() => {
+    checkLiveSession();
+    const interval = setInterval(() => {
+      checkLiveSession(false);
+    }, 3500);
+    return () => clearInterval(interval);
+  }, [checkLiveSession]);
+
+  const hasLiveBroadcast = isBroadcasting || (backendSession && backendSession.status === 'ACTIVE');
+
+  const liveCourseCode = backendSession?.courseCode || activeSubjectCode || 'CIUCMJT2';
+  const liveCourseName = backendSession?.courseName || activeSubjectName || 'Operating Systems';
+  const liveClassroom = backendSession?.classroom || activeClassroom || 'CSIT Lab 2 / Room FB';
+  const liveTeacher = backendSession?.teacherName || teacherRegName || 'Dr. Eleanor Vance';
+  const liveMinutes = Math.floor((broadcastSecondsLeft || 165) / 60);
+  const liveSeconds = (broadcastSecondsLeft || 165) % 60;
+  const liveTimer = `${String(liveMinutes).padStart(2, '0')}:${String(liveSeconds).padStart(2, '0')}`;
 
   const handleTimetableUpload = () => {
     Alert.alert(
@@ -73,48 +153,21 @@ export const StudentDashboardScreen: React.FC = () => {
         <View style={styles.heroCard}>
           <View style={styles.heroTopRow}>
             <View style={styles.pillLight}>
-              <Text style={styles.pillLightText}>3RD SEMESTER • BSCS (NEP 2020)</Text>
+              <Text style={styles.pillLightText}>
+                {studentCourseLevel || '3RD SEMESTER • BSCS (NEP 2020)'}
+              </Text>
             </View>
             <View style={styles.pillLight}>
-              <Text style={styles.pillLightText}>Major: CSIT</Text>
+              <Text style={styles.pillLightText}>
+                Major: {studentDepartment || 'CSIT'}
+              </Text>
             </View>
           </View>
 
           <Text style={styles.heroName}>{studentName}</Text>
           <Text style={styles.heroSub}>
-            Enrolment: {enrolmentNo} • 8 Enrolled Courses (20 Credits)
+            Enrolment: {enrolmentNo} • {normalizedRegisteredCourses.length} Registered Subjects ({totalCredits} Credits)
           </Text>
-        </View>
-
-        {/* Live Attendance Banner (if teacher is broadcasting or ongoing class) */}
-        <View style={styles.liveBannerCard}>
-          <View style={styles.liveHeaderRow}>
-            <View style={styles.liveIndicatorRow}>
-              <View style={styles.pulsingDot} />
-              <Text style={styles.liveAlertTitle}>
-                {isBroadcasting
-                  ? 'TRANSMITTER ACTIVE • READY TO CHECK IN'
-                  : 'ONGOING CLASS IN PROGRESS'}
-              </Text>
-            </View>
-            <View style={styles.roomPill}>
-              <MaterialIcons name="place" size={12} color={Colors.studentTeal} />
-              <Text style={styles.roomPillText}>{activeClassroom}</Text>
-            </View>
-          </View>
-
-          <Text style={styles.liveSubjectTitle}>
-            {activeSubjectCode}: {activeSubjectName}
-          </Text>
-          <Text style={styles.liveProf}>Dr. Eleanor Vance • 10:15 AM - 11:15 AM</Text>
-
-          <View style={styles.slideActionWrapper}>
-            <SlideToConfirmButton
-              title="SLIDE TO ENTER PIN & ATTEND"
-              brandColor={Colors.studentTeal}
-              onConfirmed={() => navigateTo('STUDENT_ATTENDANCE')}
-            />
-          </View>
         </View>
 
         {/* Timetable Sync & Upload Card */}
@@ -137,90 +190,128 @@ export const StudentDashboardScreen: React.FC = () => {
           </TouchableOpacity>
         </View>
 
-        {/* Today's Schedule Section */}
+        {/* Live Attendance Broadcast Section (Only shows class when teacher broadcasts) */}
         <View style={styles.sectionHeaderRow}>
-          <Text style={styles.sectionTitle}>
-            Today's Classes ({studentScheduleList.length})
-          </Text>
-          <Text style={styles.sectionSub}>GGU Bilaspur Campus</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <View
+              style={[
+                styles.liveStatusDot,
+                { backgroundColor: hasLiveBroadcast ? Colors.emeraldCheck : Colors.slate400 },
+              ]}
+            />
+            <Text style={styles.sectionTitle}>
+              Live Attendance Broadcast {hasLiveBroadcast ? '(1 Live)' : '(0 Active)'}
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={styles.radarScanBtn}
+            onPress={() => checkLiveSession(true)}
+            activeOpacity={0.7}
+          >
+            <MaterialIcons
+              name="sync"
+              size={14}
+              color={Colors.studentTeal}
+            />
+            <Text style={styles.radarScanBtnText}>
+              {isRefreshingSession ? 'Scanning...' : 'Scan Radar'}
+            </Text>
+          </TouchableOpacity>
         </View>
 
-        {studentScheduleList.map((item) => (
-          <View
-            key={item.id}
-            style={[styles.classCard, item.isOngoing && styles.classCardOngoing]}
-          >
-            <View style={styles.classCardTop}>
-              <View style={styles.classBadges}>
-                <View style={styles.courseCodeBadge}>
-                  <Text style={styles.courseCodeText}>{item.courseCode}</Text>
-                </View>
-                <View style={styles.creditsBadge}>
-                  <Text style={styles.creditsText}>
-                    {item.courseType} • {item.credits} Credits
-                  </Text>
-                </View>
+        {hasLiveBroadcast ? (
+          /* Only shown when teacher has broadcasted attendance */
+          <View style={styles.liveBroadcastCard}>
+            <View style={styles.liveCardHeader}>
+              <View style={styles.livePulseBadge}>
+                <View style={styles.pulsingDot} />
+                <Text style={styles.livePulseText}>TRANSMITTER ACTIVE • READY TO CHECK IN</Text>
               </View>
-
-              {item.isOngoing ? (
-                <View style={styles.ongoingBadge}>
-                  <View style={styles.ongoingDot} />
-                  <Text style={styles.ongoingText}>Current Slot</Text>
-                </View>
-              ) : (
-                <View style={styles.attendancePctBadge}>
-                  <Text style={styles.attendancePctText}>
-                    {item.studentAttendancePct || 85}% Attendance
-                  </Text>
-                </View>
-              )}
-            </View>
-
-            <Text style={styles.courseName}>{item.courseName}</Text>
-
-            <View style={styles.classMetaRow}>
-              <View style={styles.metaItem}>
-                <MaterialIcons name="schedule" size={14} color={Colors.slate400} />
-                <Text style={styles.metaText}>{item.timeSlot}</Text>
-              </View>
-              <View style={styles.metaItem}>
-                <MaterialIcons name="place" size={14} color={Colors.slate400} />
-                <Text style={styles.metaText}>{item.classroom}</Text>
+              <View style={styles.roomPill}>
+                <MaterialIcons name="place" size={12} color={Colors.studentTeal} />
+                <Text style={styles.roomPillText}>{liveClassroom}</Text>
               </View>
             </View>
 
-            <View style={styles.profRow}>
-              <Text style={styles.profText}>Faculty: {item.teacherName}</Text>
-              {item.isOngoing && (
-                <TouchableOpacity
-                  style={styles.markPillBtn}
-                  onPress={() => navigateTo('STUDENT_ATTENDANCE')}
-                >
-                  <Text style={styles.markPillText}>Mark Attendance</Text>
-                  <MaterialIcons name="arrow-forward" size={14} color={Colors.white} />
-                </TouchableOpacity>
-              )}
+            <View style={styles.liveClassMain}>
+              <View style={styles.courseCodeBadge}>
+                <Text style={styles.courseCodeText}>{liveCourseCode}</Text>
+              </View>
+              <Text style={styles.liveSubjectTitle}>
+                {liveCourseCode}: {liveCourseName}
+              </Text>
+            </View>
+
+            <View style={styles.liveClassMetaRow}>
+              <View style={styles.metaItem}>
+                <MaterialIcons name="person" size={14} color={Colors.slate500} />
+                <Text style={styles.metaText}>Faculty: {liveTeacher}</Text>
+              </View>
+              <View style={styles.metaItem}>
+                <MaterialIcons name="timer" size={14} color={Colors.studentTeal} />
+                <Text style={[styles.metaText, { color: Colors.studentTeal, fontWeight: '700' }]}>
+                  {liveTimer} Left
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.slideActionWrapper}>
+              <SlideToConfirmButton
+                title="SLIDE TO ENTER PIN & ATTEND"
+                brandColor={Colors.studentTeal}
+                onConfirmed={() => navigateTo('STUDENT_ATTENDANCE')}
+              />
             </View>
           </View>
-        ))}
+        ) : (
+          /* Shown when NO teacher is broadcasting */
+          <View style={styles.emptyBroadcastCard}>
+            <View style={styles.radarIconCircle}>
+              <MaterialIcons name="sensors-off" size={28} color={Colors.slate400} />
+            </View>
+            <Text style={styles.emptyBroadcastTitle}>No Live Attendance Broadcast Active</Text>
+            <Text style={styles.emptyBroadcastSubtitle}>
+              Class attendance check-in only appears here when your course teacher starts wireless broadcasting.
+            </Text>
+            <View style={styles.radarListeningRow}>
+              <View style={styles.radarListeningDot} />
+              <Text style={styles.radarListeningText}>
+                Wireless radar listening for classroom transmitter...
+              </Text>
+            </View>
+          </View>
+        )}
 
         {/* Enrolled Courses Summary */}
         <View style={styles.coursesCard}>
-          <Text style={styles.coursesTitle}>
-            NEP 2020 Registered Subjects ({gguOfficialCourses.length})
-          </Text>
-          {gguOfficialCourses.map((c) => (
-            <View key={c.sNo} style={styles.courseItem}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <View>
+              <Text style={styles.coursesTitle}>
+                Official Registered Subjects ({normalizedRegisteredCourses.length})
+              </Text>
+              <Text style={{ fontSize: 11, color: Colors.slate500, marginTop: 2 }}>
+                Verified via GGU Samarth Course Selection Slip
+              </Text>
+            </View>
+            <View style={{ backgroundColor: Colors.studentTealLight, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 }}>
+              <Text style={{ fontSize: 11, fontWeight: '800', color: Colors.studentTeal }}>
+                {totalCredits} Total Credits
+              </Text>
+            </View>
+          </View>
+
+          {normalizedRegisteredCourses.map((c, idx) => (
+            <View key={(c.courseCode || 'course') + '-' + (c.sNo || idx)} style={styles.courseItem}>
               <View style={styles.courseItemLeft}>
-                <Text style={styles.courseNum}>#{c.sNo}</Text>
-                <View>
+                <Text style={styles.courseNum}>#{c.sNo || idx + 1}</Text>
+                <View style={{ flex: 1, paddingRight: 8 }}>
                   <Text style={styles.courseNameSub}>{c.courseName}</Text>
                   <Text style={styles.courseCodeSub}>
-                    {c.courseCode} • {c.type}
+                    {c.courseCode} • {c.type || 'Registered Course'}
                   </Text>
                 </View>
               </View>
-              <Text style={styles.courseCredits}>{c.credits} Credits</Text>
+              <Text style={styles.courseCredits}>{c.credits || 3} Credits</Text>
             </View>
           ))}
         </View>
@@ -430,17 +521,120 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: Colors.slate400,
   },
-  classCard: {
+  liveStatusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  radarScanBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    backgroundColor: Colors.studentTealLight,
+  },
+  radarScanBtnText: {
+    fontSize: 10.5,
+    fontWeight: '700',
+    color: Colors.studentTeal,
+  },
+  liveBroadcastCard: {
+    backgroundColor: '#F0FDFA',
+    borderWidth: 1.5,
+    borderColor: Colors.studentTeal,
+    borderRadius: 16,
+    padding: 16,
+    gap: 10,
+    shadowColor: Colors.studentTeal,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    elevation: 3,
+  },
+  liveCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  livePulseBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  livePulseText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: Colors.studentTealDark,
+    letterSpacing: 0.5,
+  },
+  liveClassMain: {
+    gap: 4,
+  },
+  liveClassMetaRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(13, 148, 136, 0.15)',
+  },
+  emptyBroadcastCard: {
     backgroundColor: Colors.white,
-    borderRadius: 14,
-    padding: 14,
-    borderWidth: 1,
+    borderRadius: 16,
+    borderWidth: 1.5,
     borderColor: Colors.slate200,
+    borderStyle: 'dashed',
+    padding: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
     gap: 8,
   },
-  classCardOngoing: {
-    borderColor: Colors.studentTeal,
-    borderWidth: 1.5,
+  radarIconCircle: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: Colors.slate100,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  emptyBroadcastTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: Colors.slate700,
+    textAlign: 'center',
+  },
+  emptyBroadcastSubtitle: {
+    fontSize: 11.5,
+    color: Colors.slate500,
+    textAlign: 'center',
+    lineHeight: 16,
+    maxWidth: 290,
+  },
+  radarListeningRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 6,
+    backgroundColor: Colors.slate50,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: Colors.slate200,
+  },
+  radarListeningDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: Colors.studentTeal,
+  },
+  radarListeningText: {
+    fontSize: 10.5,
+    color: Colors.slate600,
+    fontWeight: '600',
   },
   classCardTop: {
     flexDirection: 'row',

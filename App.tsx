@@ -1,6 +1,31 @@
-import React from 'react';
-import { StyleSheet, View } from 'react-native';
+import React, { useEffect } from 'react';
+import { StyleSheet, View, Platform } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+
+// Inject global web CSS reset to eliminate browser focus outlines, borders and tap highlights
+if (Platform.OS === 'web' && typeof document !== 'undefined') {
+  const styleId = 'global-attend-iq-reset';
+  if (!document.getElementById(styleId)) {
+    const style = document.createElement('style');
+    style.id = styleId;
+    style.innerHTML = `
+      * {
+        -webkit-tap-highlight-color: transparent !important;
+      }
+      input, textarea, select, button, [tabindex], div {
+        outline: none !important;
+        outline-width: 0 !important;
+        box-shadow: none !important;
+      }
+      input:focus, textarea:focus, select:focus, button:focus, *:focus, *:focus-visible {
+        outline: none !important;
+        outline-width: 0 !important;
+        box-shadow: none !important;
+      }
+    `;
+    document.head.appendChild(style);
+  }
+}
 import { AttendanceProvider, useAttendance } from './src/context/AttendanceContext';
 import { RoleSelectionScreen } from './src/screens/RoleSelectionScreen';
 import { AuthScreen } from './src/screens/AuthScreen';

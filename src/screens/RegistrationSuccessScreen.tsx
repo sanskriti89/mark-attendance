@@ -5,7 +5,13 @@ import { Colors } from '../theme/colors';
 import { useAttendance } from '../context/AttendanceContext';
 
 export const RegistrationSuccessScreen: React.FC = () => {
-  const { currentRole, navigateTo } = useAttendance();
+  const {
+    currentRole,
+    navigateTo,
+    teacherDepartment,
+    studentDepartment,
+    setAuthTab,
+  } = useAttendance();
   const isTeacher = currentRole === 'TEACHER';
   const brandColor = isTeacher ? Colors.teacherOrange : Colors.studentTeal;
 
@@ -18,7 +24,7 @@ export const RegistrationSuccessScreen: React.FC = () => {
 
         <Text style={styles.title}>Registration Complete!</Text>
         <Text style={styles.subtitle}>
-          Your Guru Ghasidas Vishwavidyalaya institutional credentials have been verified and approved.
+          Your Guru Ghasidas Vishwavidyalaya institutional credentials have been verified and saved to the database.
         </Text>
 
         <View style={styles.infoBox}>
@@ -28,7 +34,9 @@ export const RegistrationSuccessScreen: React.FC = () => {
           </View>
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>Department:</Text>
-            <Text style={styles.infoVal}>CSIT (Computer Science & IT)</Text>
+            <Text style={styles.infoVal}>
+              {isTeacher ? teacherDepartment || 'GGU Faculty' : studentDepartment || 'GGU Student'}
+            </Text>
           </View>
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>Campus Geofence:</Text>
@@ -38,14 +46,13 @@ export const RegistrationSuccessScreen: React.FC = () => {
 
         <TouchableOpacity
           style={[styles.btn, { backgroundColor: brandColor }]}
-          onPress={() =>
-            navigateTo(isTeacher ? 'TEACHER_BROADCAST_SETUP' : 'STUDENT_ATTENDANCE')
-          }
+          onPress={() => {
+            setAuthTab('LOGIN');
+            navigateTo('AUTH');
+          }}
           activeOpacity={0.8}
         >
-          <Text style={styles.btnText}>
-            Go to {isTeacher ? 'Teacher Dashboard' : 'Student Portal'}
-          </Text>
+          <Text style={styles.btnText}>Proceed to Log In</Text>
           <MaterialIcons name="arrow-forward" size={18} color={Colors.white} />
         </TouchableOpacity>
       </View>

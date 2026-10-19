@@ -13,15 +13,25 @@ Smart campus attendance system featuring live teacher broadcasting, ultrasonic /
 
 ### 1. Install Dependencies
 ```bash
+# Install frontend mobile dependencies
 npm install
+
+# Install backend server dependencies
+npm --prefix backend install
 ```
 
-### 2. Start the Development Server
+### 2. Start the Backend API & Socket Server (Node.js + Express + MongoDB)
 ```bash
-npx expo start
+# In one terminal:
+npm run backend:dev
 ```
+The server will run on `http://localhost:5000` with WebSocket support.
 
-### 3. Open the App
+### 3. Start the Frontend App (Expo Go & Web)
+```bash
+# In another terminal:
+npm start
+```
 - **On Android / iPhone:** Open the **Expo Go** app and scan the QR code displayed in the terminal.
 - **In Web Browser:** Press `w` in the terminal (or open `http://localhost:8081`).
 - **Over different networks (hotspot/cellular):** Run `npx expo start --tunnel`.

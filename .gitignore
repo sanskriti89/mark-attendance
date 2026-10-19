@@ -29,3 +29,6 @@ local.properties
 
 # Legacy / nested subprojects
 mark-attendance/
+
+# OCR / Tesseract cache
+*.traineddata
