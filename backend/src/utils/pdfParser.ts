@@ -16,6 +16,8 @@ export interface ExtractedStudentDetails {
   email: string;
   department: string;
   courseLevel: string;
+  major?: string;
+  programmeName?: string;
   enrolledCourses: string[]; // ["CIUCMJT1: Relational Database Management System", ...]
   extractedCoursesDetails: ExtractedCourse[]; // Structured course array
   rawTextPreview: string;
@@ -216,13 +218,37 @@ export const extractDetailsFromText = (rawText: string): ExtractedStudentDetails
     courseLevel = 'PG';
   }
 
-  // 5. Email Extraction
-  const emailMatch = rawText.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+  // 5. Highly Accurate Email Extraction
   let email = '';
-  if (emailMatch) {
-    email = emailMatch[0].toLowerCase().trim();
-  } else if (name) {
-    email = `${name.toLowerCase().replace(/[^a-z0-9]/g, '.')}@ggu.ac.in`;
+  // Check labeled email first (e.g., Email:, Email ID:, Student Email:, Candidate Email:)
+  const labeledEmailMatch = rawText.match(
+    /(?:Email(?:\s*ID)?|E-mail(?:\s*Address)?|Candidate(?:'s)?\s*Email|Student\s*Email)[\s:.\-_|]+([a-zA-Z0-9._%+-]+(?:\s*@\s*|\s*\[at\]\s*)[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/i
+  );
+  if (labeledEmailMatch) {
+    email = labeledEmailMatch[1].replace(/\s+/g, '').replace(/\[at\]/gi, '@').toLowerCase().trim();
+  }
+
+  // If labeled email not found or it points to an institutional helpdesk, inspect all detected emails
+  const allEmails = rawText.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g) || [];
+  const systemEmails = /helpdesk|support|info@|admin@|noreply|office@|controller@|samarth|exam@/i;
+
+  if (!email || systemEmails.test(email)) {
+    const studentCandidate = allEmails.find((e) => !systemEmails.test(e));
+    if (studentCandidate) {
+      email = studentCandidate.toLowerCase().trim();
+    } else if (allEmails.length > 0 && !email) {
+      email = allEmails[0].toLowerCase().trim();
+    }
+  }
+
+  // If still no email found in PDF/slip, derive accurately from student name or enrollment
+  if (!email) {
+    if (name) {
+      const cleanName = name.toLowerCase().replace(/[^a-z0-9]/g, '.').replace(/\.+/g, '.').replace(/^\.|\.$/g, '');
+      email = `${cleanName}@ggu.ac.in`;
+    } else if (enrollmentNo) {
+      email = `${enrollmentNo.toLowerCase().replace(/[^a-z0-9]/g, '')}@ggu.ac.in`;
+    }
   }
 
 
@@ -412,11 +438,57 @@ export const extractDetailsFromText = (rawText: string): ExtractedStudentDetails
     (c) => `${c.courseCode}: ${c.courseName}`
   );
 
+  // Extract Programme Name (e.g. BACHELOR OF SCIENCE (COMPUTER SCIENCE))
+  let programmeName = '';
+  const progMatch = rawText.match(
+    /(?:Programme|Program|Course\s*Name|Degree)[\s:.\-_|]+([A-Za-z0-9\s.(),&/-]{3,70}?)(?=\s+(?:Session|Semester|Term|Roll|Enrol|Category|Department|Name|$|\n|\r))/i
+  );
+  if (progMatch) {
+    programmeName = progMatch[1].trim().replace(/\s+/g, ' ');
+  }
+
+  // Derive Major matching Programme Name or Enrolled Courses
+  let major = '';
+  const searchCorpus = (programmeName + ' ' + rawText).toUpperCase();
+  if (searchCorpus.includes('COMPUTER SCIENCE & ENGINEERING') || searchCorpus.includes('CSE')) {
+    major = 'Computer Science & Engineering';
+  } else if (searchCorpus.includes('INFORMATION TECHNOLOGY')) {
+    major = 'Information Technology';
+  } else if (searchCorpus.includes('COMPUTER APPLICATION') || searchCorpus.includes('BCA') || searchCorpus.includes('MCA')) {
+    major = 'Computer Applications';
+  } else if (searchCorpus.includes('COMPUTER SCIENCE') || searchCorpus.includes('BSCS') || searchCorpus.includes('CSIT') || extractedCoursesDetails.some(c => c.courseCode.startsWith('CI') || c.type === 'Major')) {
+    major = 'Computer Science';
+  } else if (searchCorpus.includes('ELECTRONICS') || searchCorpus.includes('ECE')) {
+    major = 'Electronics & Communication';
+  } else if (searchCorpus.includes('MECHANICAL') || searchCorpus.includes('MECH')) {
+    major = 'Mechanical Engineering';
+  } else if (searchCorpus.includes('CIVIL')) {
+    major = 'Civil Engineering';
+  } else if (searchCorpus.includes('CHEMICAL')) {
+    major = 'Chemical Engineering';
+  } else if (searchCorpus.includes('MATHEMATICS') || searchCorpus.includes('MATH')) {
+    major = 'Mathematics';
+  } else if (searchCorpus.includes('PHYSICS')) {
+    major = 'Physics';
+  } else if (searchCorpus.includes('BIOTECHNOLOGY') || searchCorpus.includes('BIOTECH')) {
+    major = 'Biotechnology';
+  } else if (searchCorpus.includes('COMMERCE') || searchCorpus.includes('B.COM')) {
+    major = 'Commerce';
+  } else if (searchCorpus.includes('MANAGEMENT') || searchCorpus.includes('MBA') || searchCorpus.includes('BBA')) {
+    major = 'Management Studies';
+  } else if (searchCorpus.includes('PHARMACY') || searchCorpus.includes('B.PHARM')) {
+    major = 'Pharmacy';
+  } else {
+    major = department ? department : 'Computer Science';
+  }
+
   console.log('[OCR/Parse Final Output]', {
     enrollmentNo,
     name,
     department,
     courseLevel,
+    programmeName,
+    major,
     coursesCount: extractedCoursesDetails.length,
     extractedCoursesDetails,
   });
@@ -427,6 +499,8 @@ export const extractDetailsFromText = (rawText: string): ExtractedStudentDetails
     email,
     department,
     courseLevel,
+    major,
+    programmeName,
     enrolledCourses,
     extractedCoursesDetails,
     rawTextPreview: rawText.slice(0, 300),

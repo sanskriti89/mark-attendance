@@ -12,6 +12,8 @@ export interface IUser extends Document {
   // Student Specific
   enrollmentNo?: string;
   courseLevel?: string;
+  major?: string;
+  programmeName?: string;
   enrolledCourses?: any[];
   // Teacher Specific
   facultyId?: string;
@@ -68,6 +70,14 @@ const UserSchema = new Schema<IUser>(
       trim: true,
     },
     courseLevel: {
+      type: String,
+      trim: true,
+    },
+    major: {
+      type: String,
+      trim: true,
+    },
+    programmeName: {
       type: String,
       trim: true,
     },

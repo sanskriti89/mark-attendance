@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, Modal, StyleSheet } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors } from '../theme/colors';
 import { useAttendance } from '../context/AttendanceContext';
+import { setAuthToken } from '../services/api';
 
 export const ProfileModal: React.FC = () => {
   const {
@@ -11,6 +12,7 @@ export const ProfileModal: React.FC = () => {
     currentRole,
     studentRegName,
     studentEnrollment,
+    studentRegEnrollment,
     studentDepartment,
     studentRegEmail,
     teacherRegName,
@@ -19,10 +21,46 @@ export const ProfileModal: React.FC = () => {
     teacherRegEmail,
     switchRole,
     navigateTo,
+    setStudentPassword,
+    resetStudentAttendance,
+    setUserNotification,
   } = useAttendance();
 
   const isTeacher = currentRole === 'TEACHER';
   const brandColor = isTeacher ? Colors.teacherOrange : Colors.studentTeal;
+
+  const resolvedStudentName = studentRegName || 'Aarav Sharma';
+  const resolvedStudentEnrollment = studentEnrollment || studentRegEnrollment || 'GGV/22/0892';
+
+  // Accurately resolve student email: prioritize verified registration email, then backend/institution email format
+  const studentDisplayEmail =
+    studentRegEmail?.trim() ||
+    (resolvedStudentName
+      ? `${resolvedStudentName.toLowerCase().trim().replace(/[^a-z0-9]+/g, '.').replace(/^\.|\.$/g, '')}@ggu.ac.in`
+      : `${resolvedStudentEnrollment.toLowerCase().replace(/[^a-z0-9]/g, '')}@ggu.ac.in`);
+
+  const teacherDisplayEmail =
+    teacherRegEmail?.trim() ||
+    (teacherFacultyId === 'FAC-CS-8924'
+      ? 'e.vance@ggu.ac.in'
+      : teacherRegName
+      ? `${teacherRegName.toLowerCase().trim().replace(/[^a-z0-9]+/g, '.').replace(/^\.|\.$/g, '')}@ggu.ac.in`
+      : 'faculty@ggu.ac.in');
+
+  const handleLogout = () => {
+    // Invalidate auth token in API client
+    setAuthToken(null);
+    // Clear password for security
+    setStudentPassword('');
+    // Reset any temporary attendance PIN/session state
+    resetStudentAttendance();
+    // Dismiss profile modal
+    setIsProfileSheetOpen(false);
+    // User feedback
+    setUserNotification('Logged out successfully.');
+    // Redirect back to initial portal role selection
+    navigateTo('ROLE_SELECTION');
+  };
 
   return (
     <Modal visible={isProfileSheetOpen} transparent animationType="fade">
@@ -33,7 +71,7 @@ export const ProfileModal: React.FC = () => {
               <MaterialIcons name="person" size={36} color={brandColor} />
             </View>
             <Text style={styles.nameText}>
-              {isTeacher ? teacherRegName : studentRegName}
+              {isTeacher ? teacherRegName : resolvedStudentName}
             </Text>
             <Text style={styles.roleSubtext}>
               {isTeacher ? 'FACULTY MEMBER' : 'STUDENT ENROLLMENT'}
@@ -45,7 +83,7 @@ export const ProfileModal: React.FC = () => {
               <MaterialIcons name="badge" size={18} color={Colors.slate500} />
               <Text style={styles.infoLabel}>ID / Enrollment:</Text>
               <Text style={styles.infoValue}>
-                {isTeacher ? teacherFacultyId : studentEnrollment}
+                {isTeacher ? teacherFacultyId : resolvedStudentEnrollment}
               </Text>
             </View>
 
@@ -60,8 +98,8 @@ export const ProfileModal: React.FC = () => {
             <View style={styles.infoRow}>
               <MaterialIcons name="email" size={18} color={Colors.slate500} />
               <Text style={styles.infoLabel}>Email:</Text>
-              <Text style={styles.infoValue}>
-                {isTeacher ? teacherRegEmail : studentRegEmail}
+              <Text style={styles.infoValue} numberOfLines={1} ellipsizeMode="tail">
+                {isTeacher ? teacherDisplayEmail : studentDisplayEmail}
               </Text>
             </View>
 
@@ -72,18 +110,30 @@ export const ProfileModal: React.FC = () => {
             </View>
 
             <View style={styles.actionRow}>
-              <TouchableOpacity
-                style={[styles.switchBtn, { borderColor: brandColor }]}
-                onPress={() => {
-                  switchRole();
-                  setIsProfileSheetOpen(false);
-                }}
-              >
-                <MaterialIcons name="swap-horiz" size={18} color={brandColor} />
-                <Text style={[styles.switchBtnText, { color: brandColor }]}>
-                  Switch to {isTeacher ? 'Student' : 'Teacher'}
-                </Text>
-              </TouchableOpacity>
+              {isTeacher ? (
+                <TouchableOpacity
+                  style={[styles.switchBtn, { borderColor: brandColor }]}
+                  onPress={() => {
+                    switchRole();
+                    setIsProfileSheetOpen(false);
+                  }}
+                >
+                  <MaterialIcons name="swap-horiz" size={18} color={brandColor} />
+                  <Text style={[styles.switchBtnText, { color: brandColor }]}>
+                    Switch to Student
+                  </Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  style={styles.logoutBtn}
+                  onPress={handleLogout}
+                >
+                  <MaterialIcons name="logout" size={18} color={Colors.liveRed} />
+                  <Text style={styles.logoutBtnText}>
+                    Log Out
+                  </Text>
+                </TouchableOpacity>
+              )}
 
               <TouchableOpacity
                 style={[styles.closeBtn, { backgroundColor: brandColor }]}
@@ -176,6 +226,22 @@ const styles = StyleSheet.create({
   switchBtnText: {
     fontSize: 13,
     fontWeight: '700',
+  },
+  logoutBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: '#FCA5A5',
+    backgroundColor: '#FEF2F2',
+  },
+  logoutBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.liveRed,
   },
   closeBtn: {
     paddingVertical: 12,

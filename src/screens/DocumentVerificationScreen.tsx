@@ -15,6 +15,8 @@ export const DocumentVerificationScreen: React.FC = () => {
     studentRegEmail,
     studentRegPassword,
     studentCourseLevel,
+    studentMajor,
+    studentProgrammeName,
     studentEnrolledCourses,
     teacherRegName,
     teacherRegFacultyId,
@@ -79,6 +81,8 @@ export const DocumentVerificationScreen: React.FC = () => {
           password: studentRegPassword,
           department: studentDepartment,
           courseLevel: studentCourseLevel || 'UG - Bachelor of Science (Hons)',
+          major: studentMajor,
+          programmeName: studentProgrammeName,
           enrolledCourses: studentEnrolledCourses || [],
         };
         const res = await api.registerStudent(payload);

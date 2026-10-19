@@ -5,36 +5,49 @@ Smart campus attendance system featuring live teacher broadcasting, ultrasonic /
 
 ---
 
-## 🚀 Quick Start (Expo Go & Web)
+## 🌐 Single-Port Local Hosting (PC Chrome + Phone on Same Wi-Fi)
+
+Run the **entire application** (React Native Web frontend + Express REST API + WebSocket + In-Memory MongoDB) on a **single port (5000)**:
+
+### 1-Command Startup:
+```bash
+npm run serve
+```
+> *(This command builds the static web bundle and starts the unified server on port `5000`)*.
+
+### Accessing the App:
+- **On PC (Chrome / Edge / Firefox):**
+  Open [http://localhost:5000](http://localhost:5000)
+- **On Phone (connected to the same Wi-Fi network):**
+  Open the LAN IP displayed in your terminal, for example:
+  `http://<YOUR_PC_IP>:5000` (e.g. `http://10.151.17.118:5000`)
+- **Demo Logins Pre-Configured:**
+  - **Teacher:** `FAC-CS-8924` / Password: `password123`
+  - **Student:** `GGV/22/0892` / Password: `password123`
+
+---
+
+## 🚀 Alternative: Development Mode (Expo Go & Metro Bundler)
 
 ### Prerequisites
 - [Node.js](https://nodejs.org/) (v18+)
-- [Expo Go app](https://expo.dev/go) on your Android or iOS device (free on Google Play / App Store)
+- [Expo Go app](https://expo.dev/go) on your Android or iOS device
 
 ### 1. Install Dependencies
 ```bash
-# Install frontend mobile dependencies
 npm install
-
-# Install backend server dependencies
 npm --prefix backend install
 ```
 
-### 2. Start the Backend API & Socket Server (Node.js + Express + MongoDB)
+### 2. Start Backend
 ```bash
-# In one terminal:
 npm run backend:dev
 ```
-The server will run on `http://localhost:5000` with WebSocket support.
 
-### 3. Start the Frontend App (Expo Go & Web)
+### 3. Start Expo Dev Bundler
 ```bash
-# In another terminal:
 npm start
 ```
-- **On Android / iPhone:** Open the **Expo Go** app and scan the QR code displayed in the terminal.
-- **In Web Browser:** Press `w` in the terminal (or open `http://localhost:8081`).
-- **Over different networks (hotspot/cellular):** Run `npx expo start --tunnel`.
 
 ---
 

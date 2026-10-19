@@ -12,6 +12,7 @@ import { Colors } from '../theme/colors';
 import { useAttendance } from '../context/AttendanceContext';
 import { api } from '../services/api';
 import { SlideToConfirmButton } from '../components/SlideToConfirmButton';
+import { GGU_OFFICIAL_COURSE_SELECTIONS } from '../data/gguUniversityData';
 
 export const StudentDashboardScreen: React.FC = () => {
   const {
@@ -20,12 +21,12 @@ export const StudentDashboardScreen: React.FC = () => {
     studentRegEnrollment,
     studentDepartment,
     studentCourseLevel,
+    studentMajor,
+    studentProgrammeName,
     studentEnrolledCourses,
     navigateTo,
     goBack,
     setIsProfileSheetOpen,
-    uploadCustomTimetable,
-    uploadedTimetableName,
     isBroadcasting,
     broadcastSecondsLeft,
     teacherRegName,
@@ -42,26 +43,32 @@ export const StudentDashboardScreen: React.FC = () => {
     if (studentEnrolledCourses && studentEnrolledCourses.length > 0) {
       return studentEnrolledCourses.map((c, idx) => {
         if (typeof c === 'object' && c !== null) {
+          const matchedOfficial = GGU_OFFICIAL_COURSE_SELECTIONS.find(
+            (o) => o.courseCode.toUpperCase() === (c.courseCode || '').toUpperCase()
+          );
           return {
             sNo: c.sNo || idx + 1,
             courseCode: c.courseCode || `SUB${idx + 1}`,
-            courseName: c.courseName || c.courseCode || 'Course',
-            credits: c.credits || 3.0,
-            type: c.type || 'Major',
-            term: c.term || '3 SEMESTER',
+            courseName: c.courseName || matchedOfficial?.courseName || c.courseCode || 'Course',
+            credits: c.credits || matchedOfficial?.credits || 3.0,
+            type: c.type || matchedOfficial?.type || 'Major',
+            term: c.term || matchedOfficial?.term || '3 SEMESTER',
           };
         }
         const str = String(c);
         const parts = str.split(':');
         const code = parts[0]?.trim() || `SUB${idx + 1}`;
-        const name = parts[1]?.trim() || code;
+        const rawName = parts[1]?.trim();
+        const matchedOfficial = GGU_OFFICIAL_COURSE_SELECTIONS.find(
+          (o) => o.courseCode.toUpperCase() === code.toUpperCase()
+        );
         return {
           sNo: idx + 1,
           courseCode: code,
-          courseName: name,
-          credits: 3.0,
-          type: 'Registered Subject',
-          term: 'Current Semester',
+          courseName: rawName || matchedOfficial?.courseName || code,
+          credits: matchedOfficial?.credits || 3.0,
+          type: matchedOfficial?.type || (code.includes('MJ') ? 'Major' : 'Registered Subject'),
+          term: matchedOfficial?.term || '3 SEMESTER',
         };
       });
     }
@@ -71,6 +78,112 @@ export const StudentDashboardScreen: React.FC = () => {
   const totalCredits = React.useMemo(() => {
     return normalizedRegisteredCourses.reduce((sum, c) => sum + (Number(c.credits) || 0), 0);
   }, [normalizedRegisteredCourses]);
+
+  // Accurately resolve student Major matching Programme Name or Enrolled Courses
+  const resolvedMajor = React.useMemo(() => {
+    // 1. Explicit Major from profile/auth
+    if (studentMajor && studentMajor.trim()) {
+      return studentMajor.trim();
+    }
+
+    // 2. Derive accurately from Programme Name / Course Level
+    const prog = (studentProgrammeName || studentCourseLevel || '').toUpperCase();
+    if (prog.includes('COMPUTER SCIENCE & ENGINEERING') || prog.includes('CSE')) {
+      return 'Computer Science & Engineering';
+    }
+    if (prog.includes('INFORMATION TECHNOLOGY') || prog.includes(' B.TECH IT') || prog.includes(' BTECH IT')) {
+      return 'Information Technology';
+    }
+    if (prog.includes('COMPUTER APPLICATION') || prog.includes('BCA') || prog.includes('MCA')) {
+      return 'Computer Applications';
+    }
+    if (prog.includes('COMPUTER SCIENCE') || prog.includes('BSCS') || prog.includes('B.SC (CS)')) {
+      return 'Computer Science';
+    }
+    if (prog.includes('ELECTRONICS') || prog.includes('ECE')) {
+      return 'Electronics & Communication';
+    }
+    if (prog.includes('MECHANICAL') || prog.includes('MECH')) {
+      return 'Mechanical Engineering';
+    }
+    if (prog.includes('CIVIL')) {
+      return 'Civil Engineering';
+    }
+    if (prog.includes('CHEMICAL')) {
+      return 'Chemical Engineering';
+    }
+    if (prog.includes('MATHEMATICS') || prog.includes('MATH')) {
+      return 'Mathematics';
+    }
+    if (prog.includes('PHYSICS')) {
+      return 'Physics';
+    }
+    if (prog.includes('BIOTECHNOLOGY') || prog.includes('BIOTECH')) {
+      return 'Biotechnology';
+    }
+    if (prog.includes('COMMERCE') || prog.includes('B.COM')) {
+      return 'Commerce';
+    }
+    if (prog.includes('MANAGEMENT') || prog.includes('MBA') || prog.includes('BBA')) {
+      return 'Management Studies';
+    }
+    if (prog.includes('PHARMACY') || prog.includes('B.PHARM')) {
+      return 'Pharmacy';
+    }
+
+    // 3. Derive accurately from Courses Enrolled In (checking Major subjects)
+    if (normalizedRegisteredCourses && normalizedRegisteredCourses.length > 0) {
+      for (const c of normalizedRegisteredCourses) {
+        const code = (c.courseCode || '').toUpperCase();
+        const name = (c.courseName || '').toUpperCase();
+        const type = (c.type || '').toUpperCase();
+
+        if (type.includes('MAJOR') || code.includes('MJT') || code.includes('MJL')) {
+          if (
+            code.startsWith('CI') ||
+            /OPERATING|DATABASE|RDBMS|DATA STRUCTURE|ALGORITHM|PYTHON|JAVA|SOFTWARE|COMPUTER/i.test(name)
+          ) {
+            return 'Computer Science';
+          }
+          if (code.startsWith('CS') || code.startsWith('CSE')) return 'Computer Science & Engineering';
+          if (code.startsWith('IT')) return 'Information Technology';
+          if (code.startsWith('EC')) return 'Electronics & Communication';
+          if (code.startsWith('ME')) return 'Mechanical Engineering';
+          if (code.startsWith('CE')) return 'Civil Engineering';
+          if (code.startsWith('MA')) return 'Mathematics';
+          if (code.startsWith('PH')) return 'Physics';
+        }
+      }
+    }
+
+    // 4. Derive from Department name / code
+    const dept = (studentDepartment || '').toUpperCase();
+    if (dept.includes('CSIT') || dept.includes('COMPUTER SCIENCE & INFORMATION TECHNOLOGY')) {
+      return 'Computer Science';
+    }
+    if (dept.includes('CSE')) return 'Computer Science & Engineering';
+    if (dept.includes('IT')) return 'Information Technology';
+    if (dept.includes('ECE')) return 'Electronics & Communication';
+    if (dept.includes('MECH')) return 'Mechanical Engineering';
+    if (dept.includes('CIVIL')) return 'Civil Engineering';
+    if (dept.includes('MATH')) return 'Mathematics';
+    if (dept.includes('PHYSICS')) return 'Physics';
+    if (dept.includes('COMMERCE')) return 'Commerce';
+    if (dept.includes('MANAGEMENT')) return 'Management Studies';
+    if (dept.includes('PHARMACY')) return 'Pharmacy';
+
+    return studentDepartment || 'Computer Science';
+  }, [studentMajor, studentProgrammeName, studentCourseLevel, studentDepartment, normalizedRegisteredCourses]);
+
+  const resolvedProgrammeOrLevel = React.useMemo(() => {
+    if (studentProgrammeName && studentProgrammeName.trim()) {
+      return studentProgrammeName.trim();
+    }
+    if (studentCourseLevel && studentCourseLevel.trim()) {
+      return studentCourseLevel.trim();
+    }
+    return '3RD SEMESTER • BSCS (NEP 2020)';
+  }, [studentProgrammeName, studentCourseLevel]);
 
   // Live session check from backend or local broadcast state
   const [backendSession, setBackendSession] = React.useState<any>(null);
@@ -112,19 +225,6 @@ export const StudentDashboardScreen: React.FC = () => {
   const liveSeconds = (broadcastSecondsLeft || 165) % 60;
   const liveTimer = `${String(liveMinutes).padStart(2, '0')}:${String(liveSeconds).padStart(2, '0')}`;
 
-  const handleTimetableUpload = () => {
-    Alert.alert(
-      'Upload Timetable',
-      'Select university timetable PDF from device storage.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Upload Sample_Timetable_NEP2020.pdf',
-          onPress: () => uploadCustomTimetable('Sample_Timetable_NEP2020.pdf'),
-        },
-      ]
-    );
-  };
 
   return (
     <View style={styles.container}>
@@ -154,12 +254,12 @@ export const StudentDashboardScreen: React.FC = () => {
           <View style={styles.heroTopRow}>
             <View style={styles.pillLight}>
               <Text style={styles.pillLightText}>
-                {studentCourseLevel || '3RD SEMESTER • BSCS (NEP 2020)'}
+                {resolvedProgrammeOrLevel}
               </Text>
             </View>
             <View style={styles.pillLight}>
               <Text style={styles.pillLightText}>
-                Major: {studentDepartment || 'CSIT'}
+                Major: {resolvedMajor}
               </Text>
             </View>
           </View>
@@ -170,25 +270,6 @@ export const StudentDashboardScreen: React.FC = () => {
           </Text>
         </View>
 
-        {/* Timetable Sync & Upload Card */}
-        <View style={styles.syncCard}>
-          <View style={styles.syncLeft}>
-            <View style={styles.syncIconBg}>
-              <MaterialIcons name="calendar-month" size={22} color={Colors.studentTeal} />
-            </View>
-            <View>
-              <Text style={styles.syncTitle}>University Timetable</Text>
-              <Text style={styles.syncSub}>
-                {uploadedTimetableName || 'Official GGU SoS E&T Schedule Active'}
-              </Text>
-            </View>
-          </View>
-
-          <TouchableOpacity style={styles.syncBtn} onPress={handleTimetableUpload}>
-            <MaterialIcons name="file-upload" size={16} color={Colors.studentTeal} />
-            <Text style={styles.syncBtnText}>Sync PDF</Text>
-          </TouchableOpacity>
-        </View>
 
         {/* Live Attendance Broadcast Section (Only shows class when teacher broadcasts) */}
         <View style={styles.sectionHeaderRow}>

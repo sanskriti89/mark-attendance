@@ -50,15 +50,18 @@ app.use('/api/attendance', attendanceRoutes);
 app.use('/api/schedule', scheduleRoutes);
 
 const candidatePaths = [
-  path.resolve(process.cwd(), '../dist'),
   path.resolve(process.cwd(), 'dist'),
+  path.resolve(process.cwd(), '../dist'),
+  path.resolve(process.cwd(), 'backend/dist'),
 ];
 const distPath = candidatePaths.find((p) => fs.existsSync(path.join(p, 'index.html'))) || candidatePaths[0];
 
 // Serve static frontend build if index.html exists in distPath
 if (fs.existsSync(path.join(distPath, 'index.html'))) {
-  console.log(`📦 [Frontend] Serving static web app from ${distPath}`);
+  console.log(`📦 [Frontend] Serving static web app from: ${distPath}`);
   app.use(express.static(distPath, { index: false }));
+} else {
+  console.warn(`⚠️ [Frontend] Static web app not found in any candidate path: ${candidatePaths.join(', ')}`);
 }
 
 // Global Error Handler
@@ -69,6 +72,11 @@ app.get('*', (req, res, next) => {
   if (req.path.startsWith('/api') || req.path.startsWith('/socket.io') || req.path === '/health') {
     return next();
   }
+  // If requesting a specific file (e.g. missing asset, font, script) that doesn't exist, return 404 instead of HTML
+  if (req.path.includes('.') && !req.path.endsWith('.html')) {
+    return res.status(404).send('Not Found');
+  }
+
   const indexPath = path.join(distPath, 'index.html');
   if (fs.existsSync(indexPath)) {
     let html = fs.readFileSync(indexPath, 'utf8');
@@ -93,7 +101,7 @@ app.get('*', (req, res, next) => {
     res.setHeader('Content-Type', 'text/html; charset=UTF-8');
     res.send(html);
   } else {
-    res.status(404).send('AttendIQ App is ready. Frontend static build not found.');
+    res.status(404).send('AttendIQ App is ready. Run "npm run build:web" to build the frontend first.');
   }
 });
 
@@ -102,18 +110,25 @@ import os from 'os';
 
 connectDB().then(() => {
   server.listen(Number(PORT), '0.0.0.0', () => {
-    console.log(`🚀 [AttendIQ Backend] Server running locally on http://localhost:${PORT}`);
+    console.log(`\n============================================================`);
+    console.log(`🚀 [AttendIQ Single-Port Unified Server Online]`);
+    console.log(`------------------------------------------------------------`);
+    console.log(`💻 Chrome / Local:   http://localhost:${PORT}`);
     
     const interfaces = os.networkInterfaces();
-    const networkIps: string[] = [];
+    let hasLan = false;
     for (const name of Object.keys(interfaces)) {
       for (const iface of interfaces[name] || []) {
         if (iface.family === 'IPv4' && !iface.internal) {
-          networkIps.push(iface.address);
-          console.log(`📱 [AttendIQ Phone Access] http://${iface.address}:${PORT} (${name})`);
+          hasLan = true;
+          console.log(`📱 Phone / Same Wi-Fi: http://${iface.address}:${PORT} (${name})`);
         }
       }
     }
-    console.log(`📡 [Socket.io] Ready for real-time live attendance broadcasting`);
+    if (!hasLan) {
+      console.log(`📱 Phone Access: Connect your PC and phone to the same Wi-Fi.`);
+    }
+    console.log(`📡 Socket.io & REST API: Active on port ${PORT}`);
+    console.log(`============================================================\n`);
   });
 });

@@ -39,6 +39,8 @@ export const AuthScreen: React.FC = () => {
     setStudentRegEmail,
     studentCourseLevel,
     setStudentCourseLevel,
+    setStudentMajor,
+    setStudentProgrammeName,
     studentDepartment,
     setStudentDepartment,
     studentRegPassword,
@@ -97,24 +99,30 @@ export const AuthScreen: React.FC = () => {
   } : null);
 
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [loginError, setLoginError] = useState<string | null>(null);
 
   const handleLogin = async () => {
     const identifier = (isTeacher ? teacherFacultyId : studentEnrollment).trim();
     const password = isTeacher ? teacherPassword : studentPassword;
 
     if (!identifier || !password) {
+      const errorMsg = 'Wrong password';
+      setLoginError(errorMsg);
       Alert.alert(
         'Credentials Required',
         `Please enter your ${isTeacher ? 'Faculty ID' : 'Enrollment Number'} and password.`
       );
+      setUserNotification(`⚠️ ${errorMsg}`);
       return;
     }
 
     setIsLoggingIn(true);
+    setLoginError(null);
     setUserNotification('Checking credentials with database...');
     try {
       const res = await api.login(identifier, password, isTeacher ? 'TEACHER' : 'STUDENT');
       if (res && res.success && res.user) {
+        setLoginError(null);
         if (res.token) {
           setAuthToken(res.token);
         }
@@ -122,24 +130,44 @@ export const AuthScreen: React.FC = () => {
         if (isTeacher) {
           setTeacherRegName(res.user.name);
           setTeacherDepartment(res.user.department || '');
+          if (res.user.email) {
+            setTeacherRegEmail(res.user.email);
+          }
           navigateTo('TEACHER_DASHBOARD');
         } else {
           setStudentRegName(res.user.name);
           setStudentRegEnrollment(res.user.enrollmentNo || identifier);
+          setStudentEnrollment(res.user.enrollmentNo || identifier);
           setStudentDepartment(res.user.department || '');
+          if (res.user.email) {
+            setStudentRegEmail(res.user.email);
+          }
+          if (res.user.courseLevel) {
+            setStudentCourseLevel(res.user.courseLevel);
+          }
+          if (res.user.major) {
+            setStudentMajor(res.user.major);
+          }
+          if (res.user.programmeName) {
+            setStudentProgrammeName(res.user.programmeName);
+          }
           if (Array.isArray(res.user.enrolledCourses) && res.user.enrolledCourses.length > 0) {
             setStudentEnrolledCourses(res.user.enrolledCourses);
           }
           navigateTo('STUDENT_DASHBOARD');
         }
       } else {
-        const errorMsg =
-          res?.message || 'Invalid credentials. User not found or password incorrect.';
+        // Display 'Wrong password' message whenever wrong password or enrollment number is entered
+        const errorMsg = 'Wrong password';
+        setLoginError(errorMsg);
         Alert.alert('Login Failed', errorMsg);
         setUserNotification(`⚠️ ${errorMsg}`);
       }
     } catch (err: any) {
-      Alert.alert('Login Error', err?.message || 'Could not connect to authentication server.');
+      const errorMsg = 'Wrong password';
+      setLoginError(errorMsg);
+      Alert.alert('Login Error', errorMsg);
+      setUserNotification(`⚠️ ${errorMsg}`);
     } finally {
       setIsLoggingIn(false);
     }
@@ -310,28 +338,66 @@ export const AuthScreen: React.FC = () => {
             <View style={styles.tabContainer}>
               <TouchableOpacity
                 style={[styles.tabButton, styles.activeTabButton, { backgroundColor: brandColor }]}
-                onPress={() => setAuthTab('LOGIN')}
+                onPress={() => {
+                  setAuthTab('LOGIN');
+                  setLoginError(null);
+                }}
               >
                 <Text style={[styles.tabText, styles.activeTabText]}>Log In</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.tabButton}
-                onPress={() => setAuthTab('REGISTER')}
+                onPress={() => {
+                  setAuthTab('REGISTER');
+                  setLoginError(null);
+                }}
               >
                 <Text style={styles.tabText}>Register</Text>
               </TouchableOpacity>
             </View>
 
             <View style={styles.formContainer}>
+              {/* Prominent Login Error Banner */}
+              {loginError && (
+                <View style={styles.loginErrorBanner}>
+                  <MaterialIcons name="error" size={22} color="#DC2626" />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.loginErrorTitle}>{loginError}</Text>
+                    <Text style={styles.loginErrorSubtitle}>
+                      The password or {isTeacher ? 'Faculty ID' : 'enrollment number'} entered does not match our records.
+                    </Text>
+                  </View>
+                </View>
+              )}
+
               {isTeacher ? (
                 <View style={styles.inputGroup}>
                   <Text style={styles.fieldLabel}>Faculty ID</Text>
-                  <View style={[styles.inputBox, focusedLoginField === 'facultyId' && { borderColor: brandColor }]}>
-                    <MaterialIcons name="badge" size={20} color={focusedLoginField === 'facultyId' ? brandColor : Colors.slate400} />
+                  <View
+                    style={[
+                      styles.inputBox,
+                      loginError ? styles.inputBoxError : null,
+                      focusedLoginField === 'facultyId' && { borderColor: brandColor },
+                    ]}
+                  >
+                    <MaterialIcons
+                      name="badge"
+                      size={20}
+                      color={
+                        loginError
+                          ? '#DC2626'
+                          : focusedLoginField === 'facultyId'
+                          ? brandColor
+                          : Colors.slate400
+                      }
+                    />
                     <TextInput
                       style={[styles.input, { outlineStyle: 'none' } as any]}
                       value={teacherFacultyId}
-                      onChangeText={setTeacherFacultyId}
+                      onChangeText={(val) => {
+                        setTeacherFacultyId(val);
+                        if (loginError) setLoginError(null);
+                      }}
                       onFocus={() => setFocusedLoginField('facultyId')}
                       onBlur={() => setFocusedLoginField(null)}
                       placeholder="e.g. FAC-CS-8924"
@@ -343,12 +409,31 @@ export const AuthScreen: React.FC = () => {
               ) : (
                 <View style={styles.inputGroup}>
                   <Text style={styles.fieldLabel}>Enrollment Number</Text>
-                  <View style={[styles.inputBox, focusedLoginField === 'enrollment' && { borderColor: brandColor }]}>
-                    <MaterialIcons name="school" size={20} color={focusedLoginField === 'enrollment' ? brandColor : Colors.slate400} />
+                  <View
+                    style={[
+                      styles.inputBox,
+                      loginError ? styles.inputBoxError : null,
+                      focusedLoginField === 'enrollment' && { borderColor: brandColor },
+                    ]}
+                  >
+                    <MaterialIcons
+                      name="school"
+                      size={20}
+                      color={
+                        loginError
+                          ? '#DC2626'
+                          : focusedLoginField === 'enrollment'
+                          ? brandColor
+                          : Colors.slate400
+                      }
+                    />
                     <TextInput
                       style={[styles.input, { outlineStyle: 'none' } as any]}
                       value={studentEnrollment}
-                      onChangeText={setStudentEnrollment}
+                      onChangeText={(val) => {
+                        setStudentEnrollment(val);
+                        if (loginError) setLoginError(null);
+                      }}
                       onFocus={() => setFocusedLoginField('enrollment')}
                       onBlur={() => setFocusedLoginField(null)}
                       placeholder="e.g. GGV/25/250/0024"
@@ -361,12 +446,32 @@ export const AuthScreen: React.FC = () => {
 
               <View style={styles.inputGroup}>
                 <Text style={styles.fieldLabel}>Password</Text>
-                <View style={[styles.inputBox, focusedLoginField === 'password' && { borderColor: brandColor }]}>
-                  <MaterialIcons name="lock" size={20} color={focusedLoginField === 'password' ? brandColor : Colors.slate400} />
+                <View
+                  style={[
+                    styles.inputBox,
+                    loginError ? styles.inputBoxError : null,
+                    focusedLoginField === 'password' && { borderColor: brandColor },
+                  ]}
+                >
+                  <MaterialIcons
+                    name="lock"
+                    size={20}
+                    color={
+                      loginError
+                        ? '#DC2626'
+                        : focusedLoginField === 'password'
+                        ? brandColor
+                        : Colors.slate400
+                    }
+                  />
                   <TextInput
                     style={[styles.input, { outlineStyle: 'none' } as any]}
                     value={isTeacher ? teacherPassword : studentPassword}
-                    onChangeText={isTeacher ? setTeacherPassword : setStudentPassword}
+                    onChangeText={(val) => {
+                      if (isTeacher) setTeacherPassword(val);
+                      else setStudentPassword(val);
+                      if (loginError) setLoginError(null);
+                    }}
                     onFocus={() => setFocusedLoginField('password')}
                     onBlur={() => setFocusedLoginField(null)}
                     placeholder="••••••••••••"
@@ -381,6 +486,12 @@ export const AuthScreen: React.FC = () => {
                     />
                   </TouchableOpacity>
                 </View>
+                {loginError && (
+                  <View style={styles.fieldErrorRow}>
+                    <MaterialIcons name="cancel" size={14} color="#DC2626" />
+                    <Text style={styles.fieldErrorText}>Wrong password</Text>
+                  </View>
+                )}
               </View>
 
               <TouchableOpacity
@@ -1287,6 +1398,34 @@ const styles = StyleSheet.create({
   formContainer: {
     gap: 16,
   },
+  loginErrorBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1.5,
+    borderColor: '#FECACA',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    shadowColor: '#DC2626',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
+    elevation: 1,
+  },
+  loginErrorTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#DC2626',
+    letterSpacing: 0.2,
+  },
+  loginErrorSubtitle: {
+    fontSize: 11.5,
+    color: '#991B1B',
+    marginTop: 2,
+    lineHeight: 16,
+  },
   inputGroup: {
     gap: 6,
   },
@@ -1300,6 +1439,23 @@ const styles = StyleSheet.create({
     height: 48,
     backgroundColor: Colors.white,
     gap: 10,
+  },
+  inputBoxError: {
+    borderColor: '#EF4444',
+    borderWidth: 1.5,
+    backgroundColor: '#FFF8F8',
+  },
+  fieldErrorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginTop: 4,
+    paddingLeft: 2,
+  },
+  fieldErrorText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#DC2626',
   },
   input: {
     flex: 1,

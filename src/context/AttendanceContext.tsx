@@ -45,6 +45,10 @@ interface AttendanceContextType {
   setStudentRegEmail: (v: string) => void;
   studentCourseLevel: string;
   setStudentCourseLevel: (v: string) => void;
+  studentMajor: string;
+  setStudentMajor: (v: string) => void;
+  studentProgrammeName: string;
+  setStudentProgrammeName: (v: string) => void;
   studentDepartment: string;
   setStudentDepartment: (v: string) => void;
   studentRegPassword: string;
@@ -314,6 +318,8 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [studentRegEnrollment, setStudentRegEnrollment] = useState('');
   const [studentRegEmail, setStudentRegEmail] = useState('');
   const [studentCourseLevel, setStudentCourseLevel] = useState('');
+  const [studentMajor, setStudentMajor] = useState('');
+  const [studentProgrammeName, setStudentProgrammeName] = useState('');
   const [studentDepartment, setStudentDepartment] = useState('');
   const [studentRegPassword, setStudentRegPassword] = useState('');
   const [studentRegConfirmPassword, setStudentRegConfirmPassword] = useState('');
@@ -422,6 +428,12 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           courses = ext.extractedCoursesDetails;
         } else if (Array.isArray(ext.enrolledCourses)) {
           courses = ext.enrolledCourses;
+        }
+        if (ext.major) {
+          setStudentMajor(ext.major);
+        }
+        if (ext.programmeName) {
+          setStudentProgrammeName(ext.programmeName);
         }
       }
 
@@ -694,6 +706,10 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         setStudentRegEmail,
         studentCourseLevel,
         setStudentCourseLevel,
+        studentMajor,
+        setStudentMajor,
+        studentProgrammeName,
+        setStudentProgrammeName,
         studentDepartment,
         setStudentDepartment,
         studentRegPassword,

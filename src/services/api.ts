@@ -3,13 +3,14 @@ import { Platform } from 'react-native';
 // Dynamically resolve API URL based on browser origin (phone/web) or LAN IP
 const getApiBaseUrl = () => {
   if (typeof window !== 'undefined' && window.location && window.location.origin) {
-    // If running in development with Expo web dev server (e.g. port 8081 or 19006)
-    if (window.location.port && window.location.port !== '5000') {
+    // If running in development with Expo Metro bundler server
+    if (window.location.port === '8081' || window.location.port === '19006' || window.location.port === '19000') {
       return `http://${window.location.hostname || 'localhost'}:5000/api`;
     }
+    // Single-port unified hosting: frontend & API served from the exact same port
     return `${window.location.origin}/api`;
   }
-  return 'http://192.168.1.24:5000/api';
+  return 'http://10.151.17.118:5000/api';
 };
 
 export const API_BASE_URL = getApiBaseUrl();
