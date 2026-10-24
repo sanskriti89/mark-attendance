@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,12 +6,13 @@ import {
   ScrollView,
   StyleSheet,
   Alert,
+  Animated,
+  Easing,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors } from '../theme/colors';
 import { useAttendance } from '../context/AttendanceContext';
 import { api } from '../services/api';
-import { SlideToConfirmButton } from '../components/SlideToConfirmButton';
 
 export const StudentDashboardScreen: React.FC = () => {
   const {
@@ -30,17 +31,100 @@ export const StudentDashboardScreen: React.FC = () => {
     broadcastSecondsLeft,
     teacherRegName,
     activeSubjectCode,
+    setActiveSubjectCode,
     activeSubjectName,
+    setActiveSubjectName,
     activeClassroom,
+    setActiveClassroom,
     gguOfficialCourses,
+    clearStudentPin,
+    resetStudentAttendance,
   } = useAttendance();
+
+  const dotPulse = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    const pulse = Animated.loop(
+      Animated.sequence([
+        Animated.timing(dotPulse, {
+          toValue: 1.45,
+          duration: 900,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(dotPulse, {
+          toValue: 1,
+          duration: 900,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    pulse.start();
+    return () => pulse.stop();
+  }, []);
 
   const studentName = studentRegName || studentEnrollment || 'Student';
   const enrolmentNo = studentEnrollment || studentRegEnrollment || 'Pending Verification';
 
+  // Dynamic semester detection: checks studentCourseLevel string, batch year, course terms, course codes, or defaults
+  const detectedSemester = React.useMemo(() => {
+    const levelStr = (studentCourseLevel || '').toUpperCase();
+    const isBatch25 = Boolean(enrolmentNo && (/GGV\/25\//i.test(enrolmentNo) || enrolmentNo.includes('/25/')));
+
+    if (/\b(?:1ST|FIRST|1)\s*(?:SEM|SEMESTER)\b|\bSEMESTER\s*[:.\-_| ]*1\b|\bI\s*SEMESTER\b/.test(levelStr)) {
+      return '1ST SEMESTER';
+    }
+    if (/\b(?:2ND|SECOND|2)\s*(?:SEM|SEMESTER)\b|\bSEMESTER\s*[:.\-_| ]*2\b|\bII\s*SEMESTER\b/.test(levelStr)) {
+      return '2ND SEMESTER';
+    }
+    if (/\b(?:3RD|THIRD|3)\s*(?:SEM|SEMESTER)\b|\bSEMESTER\s*[:.\-_| ]*3\b|\bIII\s*SEMESTER\b/.test(levelStr)) {
+      if (isBatch25) return '1ST SEMESTER';
+      return '3RD SEMESTER';
+    }
+    if (/\b(?:4TH|FOURTH|4)\s*(?:SEM|SEMESTER)\b|\bSEMESTER\s*[:.\-_| ]*4\b|\bIV\s*SEMESTER\b/.test(levelStr)) {
+      return '4TH SEMESTER';
+    }
+    if (/\b(?:5TH|FIFTH|5)\s*(?:SEM|SEMESTER)\b|\bSEMESTER\s*[:.\-_| ]*5\b|\bV\s*SEMESTER\b/.test(levelStr)) {
+      return '5TH SEMESTER';
+    }
+    if (/\b(?:6TH|SIXTH|6)\s*(?:SEM|SEMESTER)\b|\bSEMESTER\s*[:.\-_| ]*6\b|\bVI\s*SEMESTER\b/.test(levelStr)) {
+      return '6TH SEMESTER';
+    }
+    if (/\b(?:7TH|SEVENTH|7)\s*(?:SEM|SEMESTER)\b|\bSEMESTER\s*[:.\-_| ]*7\b|\bVII\s*SEMESTER\b/.test(levelStr)) {
+      return '7TH SEMESTER';
+    }
+    if (/\b(?:8TH|EIGHTH|8)\s*(?:SEM|SEMESTER)\b|\bSEMESTER\s*[:.\-_| ]*8\b|\bVIII\s*SEMESTER\b/.test(levelStr)) {
+      return '8TH SEMESTER';
+    }
+
+    if (isBatch25) {
+      return '1ST SEMESTER';
+    }
+
+    // Check enrolled course objects
+    if (Array.isArray(studentEnrolledCourses)) {
+      for (const c of studentEnrolledCourses) {
+        if (typeof c === 'object' && c !== null) {
+          const t = String(c.term || '').toUpperCase();
+          if (/\b(?:1ST|FIRST|1)\s*(?:SEM|SEMESTER)\b/.test(t)) return '1ST SEMESTER';
+          if (/\b(?:2ND|SECOND|2)\s*(?:SEM|SEMESTER)\b/.test(t)) return '2ND SEMESTER';
+          if (/\b(?:3RD|THIRD|3)\s*(?:SEM|SEMESTER)\b/.test(t)) return '3RD SEMESTER';
+          if (/\b(?:4TH|FOURTH|4)\s*(?:SEM|SEMESTER)\b/.test(t)) return '4TH SEMESTER';
+        }
+      }
+    }
+
+    return '1ST SEMESTER';
+  }, [studentCourseLevel, studentEnrolledCourses, enrolmentNo]);
+
   const normalizedRegisteredCourses = React.useMemo(() => {
     if (studentEnrolledCourses && studentEnrolledCourses.length > 0) {
       return studentEnrolledCourses.map((c, idx) => {
+        let termStr = (typeof c === 'object' && c?.term) || detectedSemester || '1ST SEMESTER';
+        if (detectedSemester === '1ST SEMESTER' && /3\s*SEMESTER|3RD\s*SEMESTER/i.test(termStr)) {
+          termStr = '1 SEMESTER';
+        }
         if (typeof c === 'object' && c !== null) {
           return {
             sNo: c.sNo || idx + 1,
@@ -48,7 +132,7 @@ export const StudentDashboardScreen: React.FC = () => {
             courseName: c.courseName || c.courseCode || 'Course',
             credits: c.credits || 3.0,
             type: c.type || 'Major',
-            term: c.term || '3 SEMESTER',
+            term: termStr,
           };
         }
         const str = String(c);
@@ -61,12 +145,12 @@ export const StudentDashboardScreen: React.FC = () => {
           courseName: name,
           credits: 3.0,
           type: 'Registered Subject',
-          term: 'Current Semester',
+          term: termStr,
         };
       });
     }
-    return gguOfficialCourses;
-  }, [studentEnrolledCourses, gguOfficialCourses]);
+    return [];
+  }, [studentEnrolledCourses, detectedSemester]);
 
   const totalCredits = React.useMemo(() => {
     return normalizedRegisteredCourses.reduce((sum, c) => sum + (Number(c.credits) || 0), 0);
@@ -102,7 +186,33 @@ export const StudentDashboardScreen: React.FC = () => {
     return () => clearInterval(interval);
   }, [checkLiveSession]);
 
-  const hasLiveBroadcast = isBroadcasting || (backendSession && backendSession.status === 'ACTIVE');
+  const isSessionActive = Boolean(backendSession && backendSession.status === 'ACTIVE');
+
+  // Verify that the student is officially enrolled in the active broadcast course
+  const isStudentEnrolledInActiveCourse = React.useMemo(() => {
+    if (!backendSession || !backendSession.courseCode) {
+      return Boolean(isBroadcasting);
+    }
+
+    if (normalizedRegisteredCourses.length === 0) {
+      return true;
+    }
+
+    const sessionCode = backendSession.courseCode.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    return normalizedRegisteredCourses.some((c) => {
+      const studentCode = (c.courseCode || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+      if (!studentCode) return false;
+      if (studentCode === sessionCode) return true;
+      if (studentCode.includes(sessionCode) || sessionCode.includes(studentCode)) return true;
+      if (studentCode.length >= 5 && sessionCode.length >= 5 && studentCode.slice(0, 5) === sessionCode.slice(0, 5)) {
+        return true;
+      }
+      return false;
+    });
+  }, [backendSession, normalizedRegisteredCourses, isBroadcasting]);
+
+  const hasLiveBroadcast = (isBroadcasting || isSessionActive) && isStudentEnrolledInActiveCourse;
+  const isOtherSubjectActive = isSessionActive && !isStudentEnrolledInActiveCourse;
 
   const liveCourseCode = backendSession?.courseCode || activeSubjectCode || 'CIUCMJT2';
   const liveCourseName = backendSession?.courseName || activeSubjectName || 'Operating Systems';
@@ -112,19 +222,26 @@ export const StudentDashboardScreen: React.FC = () => {
   const liveSeconds = (broadcastSecondsLeft || 165) % 60;
   const liveTimer = `${String(liveMinutes).padStart(2, '0')}:${String(liveSeconds).padStart(2, '0')}`;
 
-  const handleTimetableUpload = () => {
-    Alert.alert(
-      'Upload Timetable',
-      'Select university timetable PDF from device storage.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Upload Sample_Timetable_NEP2020.pdf',
-          onPress: () => uploadCustomTimetable('Sample_Timetable_NEP2020.pdf'),
-        },
-      ]
+  // Dynamic program degree resolution: BCA vs B.Sc. (CS)
+  const isBca =
+    (studentCourseLevel && /BCA|COMPUTER\s*APPLICATION/i.test(studentCourseLevel)) ||
+    (enrolmentNo && enrolmentNo.includes('/251/')) ||
+    normalizedRegisteredCourses.some(
+      (c: any) =>
+        (c.code || c.courseCode || '').toUpperCase().startsWith('CA') ||
+        (c.code || c.courseCode || '').toUpperCase().startsWith('BCA')
     );
-  };
+  const degreeName = isBca ? 'BCA' : 'B.SC. (CS)';
+
+  const displayProgram = React.useMemo(() => {
+    if (studentCourseLevel && !['UG', 'PG', ''].includes(studentCourseLevel.trim()) && /SEMESTER/i.test(studentCourseLevel)) {
+      if (enrolmentNo && /GGV\/25\//i.test(enrolmentNo) && /3RD|THIRD|3\s*SEM/i.test(studentCourseLevel)) {
+        return studentCourseLevel.replace(/3RD\s*SEMESTER|3\s*SEMESTER/gi, '1ST SEMESTER');
+      }
+      return studentCourseLevel;
+    }
+    return `${detectedSemester} • ${degreeName} (NEP 2020)`;
+  }, [studentCourseLevel, enrolmentNo, detectedSemester, degreeName]);
 
   return (
     <View style={styles.container}>
@@ -154,12 +271,12 @@ export const StudentDashboardScreen: React.FC = () => {
           <View style={styles.heroTopRow}>
             <View style={styles.pillLight}>
               <Text style={styles.pillLightText}>
-                {studentCourseLevel || '3RD SEMESTER • BSCS (NEP 2020)'}
+                {displayProgram}
               </Text>
             </View>
             <View style={styles.pillLight}>
               <Text style={styles.pillLightText}>
-                Major: {studentDepartment || 'CSIT'}
+                Department: {studentDepartment || 'CSIT'}
               </Text>
             </View>
           </View>
@@ -168,26 +285,6 @@ export const StudentDashboardScreen: React.FC = () => {
           <Text style={styles.heroSub}>
             Enrolment: {enrolmentNo} • {normalizedRegisteredCourses.length} Registered Subjects ({totalCredits} Credits)
           </Text>
-        </View>
-
-        {/* Timetable Sync & Upload Card */}
-        <View style={styles.syncCard}>
-          <View style={styles.syncLeft}>
-            <View style={styles.syncIconBg}>
-              <MaterialIcons name="calendar-month" size={22} color={Colors.studentTeal} />
-            </View>
-            <View>
-              <Text style={styles.syncTitle}>University Timetable</Text>
-              <Text style={styles.syncSub}>
-                {uploadedTimetableName || 'Official GGU SoS E&T Schedule Active'}
-              </Text>
-            </View>
-          </View>
-
-          <TouchableOpacity style={styles.syncBtn} onPress={handleTimetableUpload}>
-            <MaterialIcons name="file-upload" size={16} color={Colors.studentTeal} />
-            <Text style={styles.syncBtnText}>Sync PDF</Text>
-          </TouchableOpacity>
         </View>
 
         {/* Live Attendance Broadcast Section (Only shows class when teacher broadcasts) */}
@@ -214,7 +311,7 @@ export const StudentDashboardScreen: React.FC = () => {
               color={Colors.studentTeal}
             />
             <Text style={styles.radarScanBtnText}>
-              {isRefreshingSession ? 'Scanning...' : 'Scan Radar'}
+              {isRefreshingSession ? 'Scanning...' : 'Scan'}
             </Text>
           </TouchableOpacity>
         </View>
@@ -224,7 +321,7 @@ export const StudentDashboardScreen: React.FC = () => {
           <View style={styles.liveBroadcastCard}>
             <View style={styles.liveCardHeader}>
               <View style={styles.livePulseBadge}>
-                <View style={styles.pulsingDot} />
+                <Animated.View style={[styles.pulsingDot, { transform: [{ scale: dotPulse }] }]} />
                 <Text style={styles.livePulseText}>TRANSMITTER ACTIVE • READY TO CHECK IN</Text>
               </View>
               <View style={styles.roomPill}>
@@ -256,11 +353,52 @@ export const StudentDashboardScreen: React.FC = () => {
             </View>
 
             <View style={styles.slideActionWrapper}>
-              <SlideToConfirmButton
-                title="SLIDE TO ENTER PIN & ATTEND"
-                brandColor={Colors.studentTeal}
-                onConfirmed={() => navigateTo('STUDENT_ATTENDANCE')}
-              />
+              <TouchableOpacity
+                style={{
+                  backgroundColor: Colors.studentTeal,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  paddingVertical: 14,
+                  paddingHorizontal: 16,
+                  borderRadius: 14,
+                  gap: 8,
+                }}
+                activeOpacity={0.8}
+                onPress={() => {
+                  if (backendSession) {
+                    setActiveSubjectCode(backendSession.courseCode);
+                    setActiveSubjectName(backendSession.courseName);
+                    setActiveClassroom(backendSession.classroom);
+                  }
+                  clearStudentPin();
+                  resetStudentAttendance();
+                  navigateTo('STUDENT_ATTENDANCE');
+                }}
+              >
+                <MaterialIcons name="check-circle" size={18} color={Colors.white} />
+                <Text style={{ color: Colors.white, fontWeight: '800', fontSize: 13, letterSpacing: 0.5 }}>
+                  TAP TO ENTER PIN & ATTEND
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : isOtherSubjectActive ? (
+          /* Shown when teacher is broadcasting for another course not taken by this student */
+          <View style={[styles.emptyBroadcastCard, { borderColor: '#CBD5E1', backgroundColor: '#F8FAFC' }]}>
+            <View style={[styles.radarIconCircle, { backgroundColor: '#F1F5F9' }]}>
+              <MaterialIcons name="lock" size={24} color={Colors.slate500} />
+            </View>
+            <Text style={[styles.emptyBroadcastTitle, { color: Colors.slate800 }]}>
+              Class Broadcast Active (Different Course)
+            </Text>
+            <Text style={styles.emptyBroadcastSubtitle}>
+              Faculty is currently broadcasting for {backendSession?.courseCode}: {backendSession?.courseName} in {backendSession?.classroom || 'Room FB'}. You are not registered for this course.
+            </Text>
+            <View style={{ backgroundColor: Colors.white, borderRadius: 8, padding: 8, borderWidth: 1, borderColor: '#E2E8F0', marginTop: 6 }}>
+              <Text style={{ fontSize: 11, color: Colors.slate600, fontWeight: '600' }}>
+                Your Registered Subjects ({normalizedRegisteredCourses.length}): {normalizedRegisteredCourses.map((c) => c.courseCode).join(', ')}
+              </Text>
             </View>
           </View>
         ) : (
@@ -270,15 +408,6 @@ export const StudentDashboardScreen: React.FC = () => {
               <MaterialIcons name="sensors-off" size={28} color={Colors.slate400} />
             </View>
             <Text style={styles.emptyBroadcastTitle}>No Live Attendance Broadcast Active</Text>
-            <Text style={styles.emptyBroadcastSubtitle}>
-              Class attendance check-in only appears here when your course teacher starts wireless broadcasting.
-            </Text>
-            <View style={styles.radarListeningRow}>
-              <View style={styles.radarListeningDot} />
-              <Text style={styles.radarListeningText}>
-                Wireless radar listening for classroom transmitter...
-              </Text>
-            </View>
           </View>
         )}
 
@@ -300,20 +429,30 @@ export const StudentDashboardScreen: React.FC = () => {
             </View>
           </View>
 
-          {normalizedRegisteredCourses.map((c, idx) => (
-            <View key={(c.courseCode || 'course') + '-' + (c.sNo || idx)} style={styles.courseItem}>
-              <View style={styles.courseItemLeft}>
-                <Text style={styles.courseNum}>#{c.sNo || idx + 1}</Text>
-                <View style={{ flex: 1, paddingRight: 8 }}>
-                  <Text style={styles.courseNameSub}>{c.courseName}</Text>
-                  <Text style={styles.courseCodeSub}>
-                    {c.courseCode} • {c.type || 'Registered Course'}
-                  </Text>
-                </View>
-              </View>
-              <Text style={styles.courseCredits}>{c.credits || 3} Credits</Text>
+          {normalizedRegisteredCourses.length === 0 ? (
+            <View style={{ alignItems: 'center', paddingVertical: 24, gap: 6 }}>
+              <MaterialIcons name="menu-book" size={32} color={Colors.slate400} />
+              <Text style={{ fontSize: 14, fontWeight: '700', color: Colors.slate700 }}>No Registered Subjects</Text>
+              <Text style={{ fontSize: 12, color: Colors.slate500, textAlign: 'center', maxWidth: 280 }}>
+                Upload your official GGU Course Selection Slip during registration to view your enrolled courses.
+              </Text>
             </View>
-          ))}
+          ) : (
+            normalizedRegisteredCourses.map((c, idx) => (
+              <View key={(c.courseCode || 'course') + '-' + (c.sNo || idx)} style={styles.courseItem}>
+                <View style={styles.courseItemLeft}>
+                  <Text style={styles.courseNum}>#{c.sNo || idx + 1}</Text>
+                  <View style={{ flex: 1, paddingRight: 8 }}>
+                    <Text style={styles.courseNameSub}>{c.courseName}</Text>
+                    <Text style={styles.courseCodeSub}>
+                      {c.courseCode} • {c.type || 'Registered Course'}
+                    </Text>
+                  </View>
+                </View>
+                <Text style={styles.courseCredits}>{c.credits || 3} Credits</Text>
+              </View>
+            ))
+          )}
         </View>
       </ScrollView>
     </View>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,10 @@ import {
   Alert,
   ActivityIndicator,
   Platform,
+  Modal,
+  BackHandler,
+  Animated,
+  Easing,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
@@ -17,6 +21,8 @@ import { useAttendance } from '../context/AttendanceContext';
 import { GguDepartmentPicker } from '../components/GguDepartmentPicker';
 import { ALL_GGU_DEPARTMENTS } from '../data/gguUniversityData';
 import { api, setAuthToken } from '../services/api';
+import { saveAuthSession } from '../services/sessionStorage';
+import { getUniqueDeviceId } from '../services/deviceService';
 
 export const AuthScreen: React.FC = () => {
   const {
@@ -76,6 +82,7 @@ export const AuthScreen: React.FC = () => {
     navigateTo,
     goBack,
     setUserNotification,
+    setTeacherDailySchedule,
   } = useAttendance();
 
   const [showPassword, setShowPassword] = useState(false);
@@ -97,50 +104,336 @@ export const AuthScreen: React.FC = () => {
   } : null);
 
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [loginErrorMessage, setLoginErrorMessage] = useState<string | null>(null);
+
+  // Student Semester Selection State (1st Sem by default for new students)
+  const [studentRegSemester, setStudentRegSemester] = useState('1ST SEMESTER');
+
+  React.useEffect(() => {
+    if (studentCourseLevel) {
+      if (/1ST|SEM\s*1|SEMESTER\s*1/i.test(studentCourseLevel)) setStudentRegSemester('1ST SEMESTER');
+      else if (/2ND|SEM\s*2|SEMESTER\s*2/i.test(studentCourseLevel)) setStudentRegSemester('2ND SEMESTER');
+      else if (/3RD|SEM\s*3|SEMESTER\s*3/i.test(studentCourseLevel)) setStudentRegSemester('3RD SEMESTER');
+      else if (/4TH|SEM\s*4|SEMESTER\s*4/i.test(studentCourseLevel)) setStudentRegSemester('4TH SEMESTER');
+    } else if (studentRegEnrollment && (/GGV\/25\//i.test(studentRegEnrollment) || studentRegEnrollment.includes('/25/'))) {
+      setStudentRegSemester('1ST SEMESTER');
+    }
+  }, [studentCourseLevel, studentRegEnrollment]);
+
+  // Forgot / Reset Password state with 2-step OTP Authentication
+  const [isForgotModalVisible, setIsForgotModalVisible] = useState(false);
+  const [forgotStep, setForgotStep] = useState<1 | 2>(1);
+  const [forgotIdentifier, setForgotIdentifier] = useState('');
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotOtp, setForgotOtp] = useState('');
+  const [forgotNewPassword, setForgotNewPassword] = useState('');
+  const [forgotConfirmPassword, setForgotConfirmPassword] = useState('');
+  const [forgotShowNewPass, setForgotShowNewPass] = useState(false);
+  const [forgotShowConfirmPass, setForgotShowConfirmPass] = useState(false);
+  const [isSendingOtp, setIsSendingOtp] = useState(false);
+  const [isResettingPass, setIsResettingPass] = useState(false);
+  const [forgotErrorMsg, setForgotErrorMsg] = useState<string | null>(null);
+  const [forgotSuccessMsg, setForgotSuccessMsg] = useState<string | null>(null);
+  const [forgotMaskedEmail, setForgotMaskedEmail] = useState<string | null>(null);
+
+  const openForgotPasswordModal = () => {
+    const currentId = (isTeacher ? teacherFacultyId : studentEnrollment).trim();
+    setForgotStep(1);
+    setForgotIdentifier(currentId);
+    setForgotEmail('');
+    setForgotOtp('');
+    setForgotNewPassword('');
+    setForgotConfirmPassword('');
+    setForgotShowNewPass(false);
+    setForgotShowConfirmPass(false);
+    setForgotErrorMsg(null);
+    setForgotSuccessMsg(null);
+    setForgotMaskedEmail(null);
+    setIsForgotModalVisible(true);
+  };
+
+  // Animate forgot password modal smoothly
+  const modalScaleAnim = useRef(new Animated.Value(0.92)).current;
+  const modalOpacityAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (isForgotModalVisible) {
+      modalScaleAnim.setValue(0.92);
+      modalOpacityAnim.setValue(0);
+      Animated.parallel([
+        Animated.spring(modalScaleAnim, {
+          toValue: 1,
+          friction: 8,
+          tension: 65,
+          useNativeDriver: true,
+        }),
+        Animated.timing(modalOpacityAnim, {
+          toValue: 1,
+          duration: 180,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+  }, [isForgotModalVisible]);
+
+  // Hardware Back Press handling for modals and Register tab inside AuthScreen
+  useEffect(() => {
+    const onBackPress = () => {
+      if (isForgotModalVisible) {
+        setIsForgotModalVisible(false);
+        return true;
+      }
+      if (authTab === 'REGISTER') {
+        setAuthTab('LOGIN');
+        return true;
+      }
+      return false; // propagate to root handler to navigate to ROLE_SELECTION
+    };
+
+    const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => sub.remove();
+  }, [isForgotModalVisible, authTab]);
+
+  const handleSendOtp = async () => {
+    const trimmedId = forgotIdentifier.trim();
+    const trimmedEmail = forgotEmail.trim();
+
+    if (!trimmedId) {
+      setForgotErrorMsg(`Please enter your ${isTeacher ? 'Faculty ID' : 'Enrollment Number'}.`);
+      return;
+    }
+    if (!trimmedEmail) {
+      setForgotErrorMsg('Please enter your registered university email address.');
+      return;
+    }
+
+    setIsSendingOtp(true);
+    setForgotErrorMsg(null);
+    setForgotSuccessMsg(null);
+
+    try {
+      const res = await api.sendResetOtp(trimmedId, trimmedEmail, isTeacher ? 'TEACHER' : 'STUDENT');
+      if (res && res.success) {
+        setForgotMaskedEmail(res.maskedEmail || trimmedEmail);
+        setForgotSuccessMsg(res.message || 'Verification code sent to your registered email.');
+        setForgotOtp(''); // Keep completely empty for manual user entry
+        setForgotStep(2);
+      } else {
+        setForgotErrorMsg(res?.message || 'Verification failed. Please verify your ID and registered email.');
+      }
+    } catch (err: any) {
+      setForgotErrorMsg(err?.message || 'Network error occurred. Please try again.');
+    } finally {
+      setIsSendingOtp(false);
+    }
+  };
+
+  const handleResetPasswordSubmit = async () => {
+    const trimmedId = forgotIdentifier.trim();
+    const trimmedEmail = forgotEmail.trim();
+    const trimmedOtp = forgotOtp.trim();
+
+    if (!trimmedOtp || trimmedOtp.length < 6) {
+      setForgotErrorMsg('Please enter the 6-digit verification code sent to your email.');
+      return;
+    }
+    if (!forgotNewPassword) {
+      setForgotErrorMsg('Please enter a new password.');
+      return;
+    }
+    if (forgotNewPassword.length < 4) {
+      setForgotErrorMsg('New password must be at least 4 characters long.');
+      return;
+    }
+    if (forgotNewPassword !== forgotConfirmPassword) {
+      setForgotErrorMsg('Passwords do not match. Please ensure both passwords match.');
+      return;
+    }
+
+    setIsResettingPass(true);
+    setForgotErrorMsg(null);
+    setForgotSuccessMsg(null);
+
+    try {
+      const res = await api.resetPassword(
+        trimmedId,
+        trimmedEmail,
+        trimmedOtp,
+        forgotNewPassword,
+        isTeacher ? 'TEACHER' : 'STUDENT'
+      );
+      if (res && res.success) {
+        setForgotSuccessMsg(res.message || 'Password authenticated and reset successfully!');
+        if (isTeacher) {
+          setTeacherFacultyId(trimmedId);
+          setTeacherPassword(forgotNewPassword);
+        } else {
+          setStudentEnrollment(trimmedId);
+          setStudentPassword(forgotNewPassword);
+        }
+        setUserNotification('Password updated successfully! Tap Sign In to proceed.');
+        setTimeout(() => {
+          setIsForgotModalVisible(false);
+        }, 1500);
+      } else {
+        setForgotErrorMsg(res?.message || 'Could not reset password. Please check your verification code.');
+      }
+    } catch (err: any) {
+      setForgotErrorMsg(err?.message || 'Network error occurred. Please try again.');
+    } finally {
+      setIsResettingPass(false);
+    }
+  };
+
+  const [errorModal, setErrorModal] = useState<{
+    visible: boolean;
+    title: string;
+    message: string;
+    type?: 'error' | 'warning' | 'info';
+  }>({
+    visible: false,
+    title: '',
+    message: '',
+    type: 'error',
+  });
+
+  const showErrorModal = (
+    title: string,
+    message: string,
+    type: 'error' | 'warning' | 'info' = 'error'
+  ) => {
+    setErrorModal({
+      visible: true,
+      title: title || 'Invalid Credentials',
+      message: message || 'Invalid credentials. Please verify your ID and password.',
+      type,
+    });
+    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.alert) {
+      try {
+        window.alert(`${title}\n\n${message}`);
+      } catch (e) {
+        // window.alert fallback if needed
+      }
+    } else {
+      Alert.alert(title, message);
+    }
+  };
 
   const handleLogin = async () => {
     const identifier = (isTeacher ? teacherFacultyId : studentEnrollment).trim();
     const password = isTeacher ? teacherPassword : studentPassword;
 
     if (!identifier || !password) {
-      Alert.alert(
-        'Credentials Required',
-        `Please enter your ${isTeacher ? 'Faculty ID' : 'Enrollment Number'} and password.`
-      );
+      const field = isTeacher ? 'Faculty ID' : 'Enrollment Number';
+      const msg = `Please enter your ${field} and password.`;
+      setLoginErrorMessage(msg);
+      showErrorModal('Credentials Required', msg, 'warning');
       return;
     }
 
     setIsLoggingIn(true);
+    setLoginErrorMessage(null);
     setUserNotification('Checking credentials with database...');
+
+    // Safety watchdog: Guarantee UI returns to interactive state within 7s
+    const safetyTimer = setTimeout(() => {
+      setIsLoggingIn(false);
+      setUserNotification('Login took too long. Please try again.');
+    }, 7000);
+
     try {
-      const res = await api.login(identifier, password, isTeacher ? 'TEACHER' : 'STUDENT');
+      const deviceId = await getUniqueDeviceId();
+      const res = await api.login(identifier, password, isTeacher ? 'TEACHER' : 'STUDENT', deviceId);
+      clearTimeout(safetyTimer);
       if (res && res.success && res.user) {
+        setLoginErrorMessage(null);
         if (res.token) {
           setAuthToken(res.token);
         }
         setUserNotification(`Welcome, ${res.user.name}!`);
         if (isTeacher) {
+          const facId = res.user.facultyId || identifier;
           setTeacherRegName(res.user.name);
+          setTeacherRegFacultyId(facId);
           setTeacherDepartment(res.user.department || '');
+          if (res.user.email) {
+            setTeacherRegEmail(res.user.email);
+          }
+          await saveAuthSession({
+            role: 'TEACHER',
+            token: res.token || null,
+            teacherFacultyId: facId,
+            teacherRegName: res.user.name,
+            teacherDepartment: res.user.department || '',
+            teacherRegEmail: res.user.email || '',
+            savedAt: Date.now(),
+          });
+          try {
+            const schedRes = await api.getTeacherSchedule(facId, 'Today');
+            if (schedRes && schedRes.success && Array.isArray(schedRes.schedules) && schedRes.schedules.length > 0) {
+              setTeacherDailySchedule(schedRes.schedules);
+            }
+          } catch (schedErr) {
+            console.warn('Schedule fetch on login error:', schedErr);
+          }
           navigateTo('TEACHER_DASHBOARD');
         } else {
           setStudentRegName(res.user.name);
-          setStudentRegEnrollment(res.user.enrollmentNo || identifier);
+          const enrollId = res.user.enrollmentNo || identifier;
+          setStudentRegEnrollment(enrollId);
+          setStudentEnrollment(enrollId);
           setStudentDepartment(res.user.department || '');
+          if (res.user.courseLevel) {
+            setStudentCourseLevel(res.user.courseLevel);
+          }
+          if (res.user.email) {
+            setStudentRegEmail(res.user.email);
+          }
           if (Array.isArray(res.user.enrolledCourses) && res.user.enrolledCourses.length > 0) {
             setStudentEnrolledCourses(res.user.enrolledCourses);
           }
+          await saveAuthSession({
+            role: 'STUDENT',
+            token: res.token || null,
+            studentEnrollment: enrollId,
+            studentRegEnrollment: enrollId,
+            studentRegName: res.user.name,
+            studentDepartment: res.user.department || '',
+            studentCourseLevel: res.user.courseLevel || '',
+            studentRegEmail: res.user.email || '',
+            studentEnrolledCourses: res.user.enrolledCourses || [],
+            savedAt: Date.now(),
+          });
           navigateTo('STUDENT_DASHBOARD');
         }
       } else {
-        const errorMsg =
-          res?.message || 'Invalid credentials. User not found or password incorrect.';
-        Alert.alert('Login Failed', errorMsg);
-        setUserNotification(`⚠️ ${errorMsg}`);
+        if (res?.isDeviceLocked) {
+          const lockTitle = '🔒 Device Locked: New ID Blocked';
+          const lockMsg =
+            res?.message ||
+            'Ek device se ek din me keval ek student login ho sakta hai. Is device par aaj pehle se ek student registered hai. Proxy attendance rokne ke liye raat 12:00 AM (Midnight) tak nayi ID se login nahi kiya ja sakta.';
+          setLoginErrorMessage(lockMsg);
+          showErrorModal(lockTitle, lockMsg, 'warning');
+          setUserNotification('🚫 Device locked: New student login blocked until midnight');
+        } else {
+          const errorMsg =
+            res?.message || 'Invalid credentials. User not found or password incorrect.';
+          const isTimeout =
+            errorMsg.toLowerCase().includes('timed out') ||
+            errorMsg.toLowerCase().includes('server is running');
+          const title = isTimeout ? 'Server Timeout' : 'Invalid Credentials';
+          setLoginErrorMessage(errorMsg);
+          showErrorModal(title, errorMsg, 'error');
+          setUserNotification(`⚠️ ${errorMsg}`);
+        }
       }
     } catch (err: any) {
-      Alert.alert('Login Error', err?.message || 'Could not connect to authentication server.');
+      clearTimeout(safetyTimer);
+      const errorMsg = err?.message || 'Could not connect to authentication server.';
+      setLoginErrorMessage(errorMsg);
+      showErrorModal('Login Error', errorMsg, 'error');
     } finally {
+      clearTimeout(safetyTimer);
       setIsLoggingIn(false);
     }
   };
@@ -154,6 +447,13 @@ export const AuthScreen: React.FC = () => {
         );
         return;
       }
+      if (!teacherRegEmail || !teacherRegEmail.trim()) {
+        Alert.alert(
+          'Email Required',
+          'Please enter your email address so you can receive verification codes.'
+        );
+        return;
+      }
     } else {
       if (!studentRegName || !studentRegEnrollment || !studentRegPassword || !studentDepartment) {
         Alert.alert(
@@ -162,6 +462,27 @@ export const AuthScreen: React.FC = () => {
         );
         return;
       }
+      if (!studentRegEmail || !studentRegEmail.trim()) {
+        Alert.alert(
+          'Email Required',
+          'Please enter your active email address (Gmail or GGU) to receive OTP and verification.'
+        );
+        return;
+      }
+      const isPg = studentCourseLevel === 'PG';
+      let degreeName = 'B.SC. (CS)';
+      if (isPg) {
+        if (studentDepartment && /BCA|MCA|APPLICATION/i.test(studentDepartment)) degreeName = 'MCA';
+        else if (studentDepartment && /MGMT|MANAGEMENT/i.test(studentDepartment)) degreeName = 'MBA';
+        else if (studentDepartment && /COMMERCE/i.test(studentDepartment)) degreeName = 'M.COM';
+        else degreeName = `M.SC. (${studentDepartment || 'CS'})`;
+      } else {
+        const isBca = (studentRegEnrollment && studentRegEnrollment.includes('/251/')) ||
+          (studentDepartment && /BCA|APPLICATION/i.test(studentDepartment));
+        degreeName = isBca ? 'BCA' : 'B.SC. (CS)';
+      }
+      const sem = studentRegSemester || '1ST SEMESTER';
+      setStudentCourseLevel(`${sem} • ${degreeName} (NEP 2020)`);
     }
     navigateTo('DOC_VERIFICATION');
   };
@@ -211,7 +532,7 @@ export const AuthScreen: React.FC = () => {
         input.onchange = async (e: any) => {
           const file = e.target?.files?.[0];
           if (file) {
-            await uploadAndExtractTeacherIdCard(file.name);
+            await uploadAndExtractTeacherIdCard(file);
           }
           document.body.removeChild(input);
         };
@@ -226,7 +547,7 @@ export const AuthScreen: React.FC = () => {
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const file = result.assets[0];
-        await uploadAndExtractTeacherIdCard(file.name);
+        await uploadAndExtractTeacherIdCard(file);
       }
     } catch (err) {
       console.warn('Teacher ID picker error:', err);
@@ -245,7 +566,7 @@ export const AuthScreen: React.FC = () => {
         input.onchange = async (e: any) => {
           const file = e.target?.files?.[0];
           if (file) {
-            await uploadAndExtractTeacherTimetable(file.name);
+            await uploadAndExtractTeacherTimetable(file);
           }
           document.body.removeChild(input);
         };
@@ -260,7 +581,7 @@ export const AuthScreen: React.FC = () => {
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const file = result.assets[0];
-        await uploadAndExtractTeacherTimetable(file.name);
+        await uploadAndExtractTeacherTimetable(file);
       }
     } catch (err) {
       console.warn('Timetable picker error:', err);
@@ -385,17 +706,19 @@ export const AuthScreen: React.FC = () => {
 
               <TouchableOpacity
                 style={styles.forgotPassBtn}
-                onPress={() =>
-                  Alert.alert(
-                    'Password Reset',
-                    'A password reset link will be sent to your registered @ggu.ac.in email.'
-                  )
-                }
+                onPress={openForgotPasswordModal}
               >
                 <Text style={[styles.forgotPassText, { color: brandColor }]}>
                   Forgot Password?
                 </Text>
               </TouchableOpacity>
+
+              {loginErrorMessage ? (
+                <View style={styles.errorBanner}>
+                  <MaterialIcons name="error-outline" size={18} color={Colors.liveRed} />
+                  <Text style={styles.errorBannerText}>{loginErrorMessage}</Text>
+                </View>
+              ) : null}
 
               <TouchableOpacity
                 style={[styles.primaryButton, { backgroundColor: brandColor, opacity: isLoggingIn ? 0.7 : 1 }]}
@@ -486,12 +809,14 @@ export const AuthScreen: React.FC = () => {
               {/* Action Buttons: Browse Teacher ID */}
               <View style={styles.pdfButtonsRow}>
                 <TouchableOpacity
-                  style={[styles.browsePdfBtn, { backgroundColor: brandColor, flex: 1 }]}
+                  style={[styles.browsePdfBtn, { backgroundColor: brandColor, flex: 1, paddingVertical: 12 }]}
                   onPress={handleBrowseTeacherIdCard}
                   activeOpacity={0.85}
                 >
-                  <MaterialIcons name="upload-file" size={17} color={Colors.white} />
-                  <Text style={styles.browsePdfBtnText}>Browse Teacher ID</Text>
+                  <MaterialIcons name="upload-file" size={19} color={Colors.white} />
+                  <Text style={[styles.browsePdfBtnText, { fontSize: 14, fontWeight: '700' }]}>
+                    Browse & Upload Teacher ID Card
+                  </Text>
                 </TouchableOpacity>
               </View>
 
@@ -584,12 +909,14 @@ export const AuthScreen: React.FC = () => {
               {/* Action Buttons: Browse Timetable */}
               <View style={styles.pdfButtonsRow}>
                 <TouchableOpacity
-                  style={[styles.browsePdfBtn, { backgroundColor: brandColor, flex: 1 }]}
+                  style={[styles.browsePdfBtn, { backgroundColor: brandColor, flex: 1, paddingVertical: 12 }]}
                   onPress={handleBrowseTeacherTimetable}
                   activeOpacity={0.85}
                 >
-                  <MaterialIcons name="folder-open" size={17} color={Colors.white} />
-                  <Text style={styles.browsePdfBtnText}>Browse Time Table</Text>
+                  <MaterialIcons name="folder-open" size={19} color={Colors.white} />
+                  <Text style={[styles.browsePdfBtnText, { fontSize: 14, fontWeight: '700' }]}>
+                    Browse & Upload Teaching Timetable
+                  </Text>
                 </TouchableOpacity>
               </View>
 
@@ -1040,13 +1367,13 @@ export const AuthScreen: React.FC = () => {
 
               {/* Field 4: Email */}
               <View style={styles.fieldBlock}>
-                <Text style={styles.fieldLabel}>Email</Text>
+                <Text style={styles.fieldLabel}>Active Email Address</Text>
                 <View style={styles.textInputCard}>
                   <TextInput
                     style={styles.textInputFilled}
                     value={studentRegEmail}
                     onChangeText={setStudentRegEmail}
-                    placeholder="e.g. student@ggu.ac.in"
+                    placeholder="Enter your active personal or university email"
                     placeholderTextColor={Colors.slate400}
                     keyboardType="email-address"
                     autoCapitalize="none"
@@ -1056,7 +1383,7 @@ export const AuthScreen: React.FC = () => {
 
               {/* Field 5: Course (UG / PG Radio Buttons) */}
               <View style={styles.fieldBlock}>
-                <Text style={styles.fieldLabel}>Course</Text>
+                <Text style={styles.fieldLabel}>Course Level</Text>
                 <View style={styles.radioGroupRow}>
                   {/* Radio UG */}
                   <TouchableOpacity
@@ -1067,10 +1394,10 @@ export const AuthScreen: React.FC = () => {
                     <View
                       style={[
                         styles.radioOuterCircle,
-                        studentCourseLevel === 'UG' && { borderColor: brandColor },
+                        (studentCourseLevel !== 'PG') && { borderColor: brandColor },
                       ]}
                     >
-                      {studentCourseLevel === 'UG' && (
+                      {studentCourseLevel !== 'PG' && (
                         <View
                           style={[
                             styles.radioInnerCircle,
@@ -1082,17 +1409,22 @@ export const AuthScreen: React.FC = () => {
                     <Text
                       style={[
                         styles.radioLabelText,
-                        studentCourseLevel === 'UG' && styles.radioLabelTextActive,
+                        studentCourseLevel !== 'PG' && styles.radioLabelTextActive,
                       ]}
                     >
-                      UG
+                      Undergraduate (UG - 8 Semesters)
                     </Text>
                   </TouchableOpacity>
 
                   {/* Radio PG */}
                   <TouchableOpacity
                     style={styles.radioOption}
-                    onPress={() => setStudentCourseLevel('PG')}
+                    onPress={() => {
+                      setStudentCourseLevel('PG');
+                      if (['5TH SEMESTER', '6TH SEMESTER', '7TH SEMESTER', '8TH SEMESTER'].includes(studentRegSemester)) {
+                        setStudentRegSemester('1ST SEMESTER');
+                      }
+                    }}
                     activeOpacity={0.8}
                   >
                     <View
@@ -1116,9 +1448,66 @@ export const AuthScreen: React.FC = () => {
                         studentCourseLevel === 'PG' && styles.radioLabelTextActive,
                       ]}
                     >
-                      PG
+                      Postgraduate (PG - 4 Semesters)
                     </Text>
                   </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* Field 5.5: Semester Selection (Up to 8th for UG, 4th for PG) */}
+              <View style={styles.fieldBlock}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <Text style={styles.fieldLabel}>Academic Semester</Text>
+                  <Text style={{ fontSize: 11, color: Colors.slate500, fontWeight: '600' }}>
+                    {studentCourseLevel === 'PG' ? 'PG: 1st to 4th Sem' : 'UG (NEP): 1st to 8th Sem'}
+                  </Text>
+                </View>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
+                  {(studentCourseLevel === 'PG'
+                    ? [
+                        { label: '1st Sem', val: '1ST SEMESTER' },
+                        { label: '2nd Sem', val: '2ND SEMESTER' },
+                        { label: '3rd Sem', val: '3RD SEMESTER' },
+                        { label: '4th Sem', val: '4TH SEMESTER' },
+                      ]
+                    : [
+                        { label: '1st Sem', val: '1ST SEMESTER' },
+                        { label: '2nd Sem', val: '2ND SEMESTER' },
+                        { label: '3rd Sem', val: '3RD SEMESTER' },
+                        { label: '4th Sem', val: '4TH SEMESTER' },
+                        { label: '5th Sem', val: '5TH SEMESTER' },
+                        { label: '6th Sem', val: '6TH SEMESTER' },
+                        { label: '7th Sem', val: '7TH SEMESTER' },
+                        { label: '8th Sem', val: '8TH SEMESTER' },
+                      ]
+                  ).map((s) => {
+                    const isSelected = studentRegSemester === s.val;
+                    return (
+                      <TouchableOpacity
+                        key={s.val}
+                        style={{
+                          paddingHorizontal: 14,
+                          paddingVertical: 7,
+                          borderRadius: 20,
+                          backgroundColor: isSelected ? brandColor : Colors.white,
+                          borderWidth: 1.5,
+                          borderColor: isSelected ? brandColor : Colors.slate200,
+                        }}
+                        onPress={() => setStudentRegSemester(s.val)}
+                        activeOpacity={0.8}
+                      >
+                        <Text
+                          style={{
+                            fontSize: 12,
+                            fontWeight: isSelected ? '700' : '600',
+                            color: isSelected ? Colors.white : Colors.slate700,
+                          }}
+                        >
+                          {s.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
                 </View>
               </View>
 
@@ -1183,6 +1572,306 @@ export const AuthScreen: React.FC = () => {
           }
         }}
       />
+
+      {/* Invalid Credentials & Alert Modal Popup */}
+      <Modal
+        visible={errorModal.visible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setErrorModal((prev) => ({ ...prev, visible: false }))}
+      >
+        <View style={styles.alertModalOverlay}>
+          <View style={styles.alertModalCard}>
+            <View
+              style={[
+                styles.alertIconCircle,
+                {
+                  backgroundColor:
+                    errorModal.type === 'warning'
+                      ? 'rgba(217, 119, 6, 0.12)'
+                      : errorModal.type === 'info'
+                      ? 'rgba(15, 135, 172, 0.12)'
+                      : 'rgba(220, 38, 38, 0.12)',
+                },
+              ]}
+            >
+              <MaterialIcons
+                name={
+                  errorModal.type === 'warning'
+                    ? 'warning-amber'
+                    : errorModal.type === 'info'
+                    ? 'info-outline'
+                    : 'lock-outline'
+                }
+                size={34}
+                color={
+                  errorModal.type === 'warning'
+                    ? Colors.warningAmber
+                    : errorModal.type === 'info'
+                    ? Colors.studentTeal
+                    : Colors.liveRed
+                }
+              />
+            </View>
+
+            <Text style={styles.alertModalTitle}>{errorModal.title || 'Invalid Credentials'}</Text>
+
+            <Text style={styles.alertModalMessage}>
+              {errorModal.message ||
+                'The credentials you entered do not match our university records. Please verify and try again.'}
+            </Text>
+
+            <TouchableOpacity
+              style={[
+                styles.alertModalBtn,
+                {
+                  backgroundColor:
+                    errorModal.type === 'warning'
+                      ? Colors.warningAmber
+                      : errorModal.type === 'info'
+                      ? Colors.studentTeal
+                      : Colors.liveRed,
+                },
+              ]}
+              onPress={() => setErrorModal((prev) => ({ ...prev, visible: false }))}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.alertModalBtnText}>OK</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Forgot / Reset Password Modal */}
+      <Modal
+        visible={isForgotModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setIsForgotModalVisible(false)}
+      >
+        <View style={styles.alertModalOverlay}>
+          <Animated.View
+            style={[
+              styles.resetModalCard,
+              { transform: [{ scale: modalScaleAnim }], opacity: modalOpacityAnim },
+            ]}
+          >
+            <View style={styles.resetModalHeader}>
+              <View style={[styles.resetIconBadge, { backgroundColor: isTeacher ? '#FEF3C7' : '#DCFCE7' }]}>
+                <MaterialIcons name={forgotStep === 1 ? 'verified-user' : 'lock-reset'} size={24} color={brandColor} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.resetModalTitle}>
+                  {forgotStep === 1 ? 'Verify Identity (Step 1/2)' : 'Set New Password (Step 2/2)'}
+                </Text>
+                <Text style={styles.resetModalSubtitle}>
+                  {forgotStep === 1
+                    ? `Enter your ${isTeacher ? 'Faculty ID' : 'Enrollment No'} and registered GGU email`
+                    : `Enter the 6-digit code sent to ${forgotMaskedEmail || forgotEmail}`}
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setIsForgotModalVisible(false)}
+                style={styles.resetModalCloseBtn}
+              >
+                <MaterialIcons name="close" size={22} color={Colors.slate400} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Error banner */}
+            {forgotErrorMsg ? (
+              <View style={styles.errorBanner}>
+                <MaterialIcons name="error-outline" size={18} color={Colors.liveRed} />
+                <Text style={styles.errorBannerText}>{forgotErrorMsg}</Text>
+              </View>
+            ) : null}
+
+            {/* Success banner */}
+            {forgotSuccessMsg ? (
+              <View style={styles.resetSuccessBanner}>
+                <MaterialIcons name="check-circle" size={18} color="#16A34A" />
+                <Text style={styles.resetSuccessBannerText}>{forgotSuccessMsg}</Text>
+              </View>
+            ) : null}
+
+            {forgotStep === 1 ? (
+              /* ================= STEP 1: IDENTITY & REGISTERED EMAIL ================= */
+              <View>
+                {/* Identifier input */}
+                <View style={[styles.inputGroup, { marginBottom: 12 }]}>
+                  <Text style={styles.fieldLabel}>
+                    {isTeacher ? 'FACULTY ID' : 'ENROLLMENT NUMBER'}
+                  </Text>
+                  <View style={styles.inputBox}>
+                    <MaterialIcons name="badge" size={20} color={brandColor} />
+                    <TextInput
+                      style={styles.input}
+                      value={forgotIdentifier}
+                      onChangeText={(text) => {
+                        setForgotIdentifier(text);
+                        if (forgotErrorMsg) setForgotErrorMsg(null);
+                      }}
+                      placeholder={isTeacher ? 'e.g. TCH-CS-001' : 'e.g. GGV/25/250/0024'}
+                      placeholderTextColor={Colors.slate400}
+                      autoCapitalize="characters"
+                    />
+                  </View>
+                </View>
+
+                {/* Registered Email input */}
+                <View style={[styles.inputGroup, { marginBottom: 18 }]}>
+                  <Text style={styles.fieldLabel}>REGISTERED GGU / PERSONAL EMAIL</Text>
+                  <View style={styles.inputBox}>
+                    <MaterialIcons name="email" size={20} color={brandColor} />
+                    <TextInput
+                      style={styles.input}
+                      value={forgotEmail}
+                      onChangeText={(text) => {
+                        setForgotEmail(text);
+                        if (forgotErrorMsg) setForgotErrorMsg(null);
+                      }}
+                      placeholder="e.g. yourname@ggu.ac.in or gmail"
+                      placeholderTextColor={Colors.slate400}
+                      autoCapitalize="none"
+                      keyboardType="email-address"
+                    />
+                  </View>
+                </View>
+
+                {/* Action buttons */}
+                <View style={styles.resetModalActions}>
+                  <TouchableOpacity
+                    style={styles.resetCancelBtn}
+                    onPress={() => setIsForgotModalVisible(false)}
+                    disabled={isSendingOtp}
+                  >
+                    <Text style={styles.resetCancelBtnText}>Cancel</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.resetSubmitBtn,
+                      { backgroundColor: brandColor, opacity: isSendingOtp ? 0.7 : 1 },
+                    ]}
+                    onPress={handleSendOtp}
+                    disabled={isSendingOtp}
+                  >
+                    {isSendingOtp ? (
+                      <ActivityIndicator size="small" color={Colors.white} />
+                    ) : (
+                      <Text style={styles.resetSubmitBtnText}>Send Verification OTP →</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ) : (
+              /* ================= STEP 2: ENTER OTP & NEW PASSWORD ================= */
+              <View>
+                {/* 6-Digit OTP input */}
+                <View style={[styles.inputGroup, { marginBottom: 12 }]}>
+                  <Text style={styles.fieldLabel}>6-DIGIT VERIFICATION CODE (OTP)</Text>
+                  <View style={styles.inputBox}>
+                    <MaterialIcons name="security" size={20} color={brandColor} />
+                    <TextInput
+                      style={[styles.input, { letterSpacing: 3, fontWeight: '700' }]}
+                      value={forgotOtp}
+                      onChangeText={(text) => {
+                        setForgotOtp(text);
+                        if (forgotErrorMsg) setForgotErrorMsg(null);
+                      }}
+                      placeholder="• • • • • •"
+                      placeholderTextColor={Colors.slate400}
+                      keyboardType="numeric"
+                      maxLength={6}
+                    />
+                  </View>
+                </View>
+
+                {/* New Password input */}
+                <View style={[styles.inputGroup, { marginBottom: 12 }]}>
+                  <Text style={styles.fieldLabel}>NEW PASSWORD</Text>
+                  <View style={styles.inputBox}>
+                    <MaterialIcons name="lock-outline" size={20} color={brandColor} />
+                    <TextInput
+                      style={styles.input}
+                      value={forgotNewPassword}
+                      onChangeText={(text) => {
+                        setForgotNewPassword(text);
+                        if (forgotErrorMsg) setForgotErrorMsg(null);
+                      }}
+                      placeholder="At least 4 characters"
+                      placeholderTextColor={Colors.slate400}
+                      secureTextEntry={!forgotShowNewPass}
+                    />
+                    <TouchableOpacity onPress={() => setForgotShowNewPass(!forgotShowNewPass)}>
+                      <MaterialIcons
+                        name={forgotShowNewPass ? 'visibility' : 'visibility-off'}
+                        size={20}
+                        color={Colors.slate400}
+                      />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                {/* Confirm New Password input */}
+                <View style={[styles.inputGroup, { marginBottom: 18 }]}>
+                  <Text style={styles.fieldLabel}>CONFIRM NEW PASSWORD</Text>
+                  <View style={styles.inputBox}>
+                    <MaterialIcons name="lock-outline" size={20} color={brandColor} />
+                    <TextInput
+                      style={styles.input}
+                      value={forgotConfirmPassword}
+                      onChangeText={(text) => {
+                        setForgotConfirmPassword(text);
+                        if (forgotErrorMsg) setForgotErrorMsg(null);
+                      }}
+                      placeholder="Re-enter new password"
+                      placeholderTextColor={Colors.slate400}
+                      secureTextEntry={!forgotShowConfirmPass}
+                    />
+                    <TouchableOpacity onPress={() => setForgotShowConfirmPass(!forgotShowConfirmPass)}>
+                      <MaterialIcons
+                        name={forgotShowConfirmPass ? 'visibility' : 'visibility-off'}
+                        size={20}
+                        color={Colors.slate400}
+                      />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                {/* Action buttons */}
+                <View style={styles.resetModalActions}>
+                  <TouchableOpacity
+                    style={styles.resetCancelBtn}
+                    onPress={() => {
+                      setForgotStep(1);
+                      setForgotErrorMsg(null);
+                    }}
+                    disabled={isResettingPass}
+                  >
+                    <Text style={styles.resetCancelBtnText}>← Back</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.resetSubmitBtn,
+                      { backgroundColor: brandColor, opacity: isResettingPass ? 0.7 : 1 },
+                    ]}
+                    onPress={handleResetPasswordSubmit}
+                    disabled={isResettingPass}
+                  >
+                    {isResettingPass ? (
+                      <ActivityIndicator size="small" color={Colors.white} />
+                    ) : (
+                      <Text style={styles.resetSubmitBtnText}>Authenticate & Update</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+          </Animated.View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -1763,5 +2452,180 @@ const styles = StyleSheet.create({
   twoColumnRow: {
     flexDirection: 'row',
     gap: 12,
+  },
+  alertModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.65)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+    zIndex: 9999,
+  },
+  alertModalCard: {
+    backgroundColor: Colors.white,
+    borderRadius: 20,
+    padding: 26,
+    width: '100%',
+    maxWidth: 400,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    elevation: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(220, 38, 38, 0.2)',
+  },
+  alertIconCircle: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  alertModalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: Colors.slate900,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  alertModalMessage: {
+    fontSize: 14,
+    color: Colors.slate600,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 22,
+  },
+  alertModalBtn: {
+    width: '100%',
+    paddingVertical: 13,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: Colors.liveRed,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  alertModalBtnText: {
+    color: Colors.white,
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(220, 38, 38, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(220, 38, 38, 0.25)',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 14,
+    gap: 8,
+  },
+  errorBannerText: {
+    flex: 1,
+    fontSize: 13,
+    color: Colors.liveRed,
+    fontWeight: '500',
+  },
+  resetModalCard: {
+    backgroundColor: Colors.white,
+    borderRadius: 20,
+    padding: 24,
+    width: '100%',
+    maxWidth: 440,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.25,
+    shadowRadius: 24,
+    elevation: 12,
+    borderWidth: 1,
+    borderColor: Colors.slate200,
+  },
+  resetModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 18,
+  },
+  resetIconBadge: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  resetModalTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: Colors.slate900,
+  },
+  resetModalSubtitle: {
+    fontSize: 12,
+    color: Colors.slate500,
+    marginTop: 2,
+  },
+  resetModalCloseBtn: {
+    padding: 6,
+    borderRadius: 8,
+  },
+  resetSuccessBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(22, 163, 74, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(22, 163, 74, 0.3)',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 14,
+    gap: 8,
+  },
+  resetSuccessBannerText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#16A34A',
+    fontWeight: '600',
+  },
+  resetModalActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 10,
+    marginTop: 10,
+  },
+  resetCancelBtn: {
+    paddingVertical: 11,
+    paddingHorizontal: 18,
+    borderRadius: 10,
+    backgroundColor: Colors.slate100,
+  },
+  resetCancelBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: Colors.slate600,
+  },
+  resetSubmitBtn: {
+    flex: 1,
+    paddingVertical: 11,
+    paddingHorizontal: 18,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: Colors.black,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  resetSubmitBtnText: {
+    color: Colors.white,
+    fontSize: 14,
+    fontWeight: '700',
   },
 });

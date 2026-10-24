@@ -8,19 +8,52 @@ export const getTeacherSchedule = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const { facultyId } = req.params;
+    const rawId = req.params.facultyId || (req.params as any)[0] || req.query.facultyId;
     const { dayOfWeek = 'Today' } = req.query;
 
-    const schedules = await Schedule.find({
+    const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const currentDay = daysOfWeek[new Date().getDay()];
+
+    const cleanId = String(rawId || '').trim();
+    const idVariants = [
+      cleanId,
+      cleanId.toUpperCase(),
+      cleanId.replace(/^GGV\//i, ''),
+      cleanId.replace(/^GGV\//i, '').toUpperCase(),
+      `GGV/${cleanId}`.toUpperCase(),
+    ];
+
+    let dayQuery: any = {};
+    if (dayOfWeek === 'Today') {
+      dayQuery = { $in: ['Today', currentDay, currentDay.toUpperCase(), currentDay.toLowerCase()] };
+    } else if (dayOfWeek && dayOfWeek !== 'All') {
+      dayQuery = new RegExp(`^${dayOfWeek}$`, 'i');
+    }
+
+    const query: any = {
       targetRole: 'TEACHER',
-      targetId: facultyId ? facultyId.toUpperCase() : 'FAC-CS-8924',
-      ...(dayOfWeek !== 'All' ? { dayOfWeek } : {}),
-    }).sort({ timeSlot: 1 });
+      targetId: { $in: idVariants },
+    };
+
+    if (dayOfWeek !== 'All') {
+      query.dayOfWeek = dayQuery;
+    }
+
+    let schedules = await Schedule.find(query).sort({ timeSlot: 1 });
+
+    // Deduplicate in case multiple targetId variants matched
+    const seen = new Set<string>();
+    const uniqueSchedules = schedules.filter((item: any) => {
+      const key = `${item.courseCode}_${item.dayOfWeek}_${item.timeSlot}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
 
     res.status(200).json({
       success: true,
-      count: schedules.length,
-      schedules,
+      count: uniqueSchedules.length,
+      schedules: uniqueSchedules,
     });
   } catch (error) {
     next(error);
@@ -34,19 +67,51 @@ export const getStudentSchedule = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const { enrollmentNo } = req.params;
+    const rawEnrollment = req.params.enrollmentNo || (req.params as any)[0] || req.query.enrollmentNo;
     const { dayOfWeek = 'Today' } = req.query;
 
-    const schedules = await Schedule.find({
+    const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const currentDay = daysOfWeek[new Date().getDay()];
+
+    const cleanId = String(rawEnrollment || '').trim();
+    const idVariants = [
+      cleanId,
+      cleanId.toUpperCase(),
+      cleanId.replace(/^GGV\//i, ''),
+      cleanId.replace(/^GGV\//i, '').toUpperCase(),
+      `GGV/${cleanId}`.toUpperCase(),
+    ];
+
+    let dayQuery: any = {};
+    if (dayOfWeek === 'Today') {
+      dayQuery = { $in: ['Today', currentDay, currentDay.toUpperCase(), currentDay.toLowerCase()] };
+    } else if (dayOfWeek && dayOfWeek !== 'All') {
+      dayQuery = new RegExp(`^${dayOfWeek}$`, 'i');
+    }
+
+    const query: any = {
       targetRole: 'STUDENT',
-      targetId: enrollmentNo ? enrollmentNo.toUpperCase() : 'GGV/22/0892',
-      ...(dayOfWeek !== 'All' ? { dayOfWeek } : {}),
-    }).sort({ timeSlot: 1 });
+      targetId: { $in: idVariants },
+    };
+
+    if (dayOfWeek !== 'All') {
+      query.dayOfWeek = dayQuery;
+    }
+
+    let schedules = await Schedule.find(query).sort({ timeSlot: 1 });
+
+    const seenStudent = new Set<string>();
+    const uniqueStudentSchedules = schedules.filter((item: any) => {
+      const key = `${item.courseCode}_${item.dayOfWeek}_${item.timeSlot}`;
+      if (seenStudent.has(key)) return false;
+      seenStudent.add(key);
+      return true;
+    });
 
     res.status(200).json({
       success: true,
-      count: schedules.length,
-      schedules,
+      count: uniqueStudentSchedules.length,
+      schedules: uniqueStudentSchedules,
     });
   } catch (error) {
     next(error);

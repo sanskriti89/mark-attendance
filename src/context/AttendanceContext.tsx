@@ -11,18 +11,22 @@ import {
   GguSelectedCourse,
 } from '../data/types';
 import { GGU_OFFICIAL_COURSE_SELECTIONS } from '../data/gguUniversityData';
-import { api } from '../services/api';
+import { api, setAuthToken } from '../services/api';
+import { getAuthSession, clearAuthSession } from '../services/sessionStorage';
 
 interface AttendanceContextType {
   // Navigation & Role
   currentScreen: Screen;
   currentRole: Role;
   authTab: AuthTab;
+  isAuthRestoring: boolean;
   selectRole: (role: Role) => void;
   switchRole: () => void;
+  signOut: () => void;
   setAuthTab: (tab: AuthTab) => void;
   navigateTo: (screen: Screen) => void;
-  goBack: () => void;
+  goBack: () => boolean;
+  screenHistory: Screen[];
 
   // Student Login Fields
   studentEnrollment: string;
@@ -90,14 +94,18 @@ interface AttendanceContextType {
 
   // Teacher Broadcast
   broadcastPin: string;
+  setBroadcastPin: (pin: string) => void;
   appendBroadcastPinDigit: (d: string) => void;
   backspaceBroadcastPin: () => void;
   clearBroadcastPin: () => void;
   isBroadcasting: boolean;
   broadcastSecondsLeft: number;
   currentAttendanceCount: number;
+  setCurrentAttendanceCount: React.Dispatch<React.SetStateAction<number>>;
   totalAttendanceTarget: number;
+  setTotalAttendanceTarget: React.Dispatch<React.SetStateAction<number>>;
   recentJoins: string[];
+  setRecentJoins: React.Dispatch<React.SetStateAction<string[]>>;
   physicalHeadcount: number;
   incrementPhysicalHeadcount: () => void;
   decrementPhysicalHeadcount: () => void;
@@ -107,9 +115,14 @@ interface AttendanceContextType {
   stopBroadcastTimer: () => void;
 
   // Active broadcast session details
+  activeSessionId: string | null;
+  setActiveSessionId: (id: string | null) => void;
   activeSubjectCode: string;
+  setActiveSubjectCode: (code: string) => void;
   activeSubjectName: string;
+  setActiveSubjectName: (name: string) => void;
   activeClassroom: string;
+  setActiveClassroom: (room: string) => void;
   startClassAttendanceFromSchedule: (item: ClassScheduleItem) => void;
 
   // Student Attendance
@@ -127,7 +140,9 @@ interface AttendanceContextType {
   selectedDaySchedule: string;
   setSelectedDaySchedule: (day: string) => void;
   teacherDailySchedule: ClassScheduleItem[];
+  setTeacherDailySchedule: (schedules: ClassScheduleItem[]) => void;
   studentScheduleList: ClassScheduleItem[];
+  setStudentScheduleList: (schedules: ClassScheduleItem[]) => void;
   gguOfficialCourses: GguSelectedCourse[];
   uploadCustomTimetable: (name: string) => void;
   uploadedTimetableName: string | null;
@@ -136,6 +151,8 @@ interface AttendanceContextType {
   sampleStudentRoster: SubjectRosterItem[];
   sampleUgSessions: TeacherClassSession[];
   attendanceRecords: StudentAttendanceRecord[];
+  setAttendanceRecords: React.Dispatch<React.SetStateAction<StudentAttendanceRecord[]>>;
+  generateRandomPin: () => string;
   toggleRecordAttendance: (sNo: string) => void;
   searchQuery: string;
   setSearchQuery: (v: string) => void;
@@ -156,150 +173,72 @@ interface AttendanceContextType {
   setUserNotification: (v: string | null) => void;
 }
 
-const initialAttendanceRecords: StudentAttendanceRecord[] = [
-  { sNo: '01', studentName: 'Santosh Rao', dept: 'CSIT', courseType: 'Major', isPresent: true, checkInTime: '10:14 AM', verificationMethod: 'GGU GPS + PIN' },
-  { sNo: '02', studentName: 'Sample Kumar', dept: 'CSE', courseType: 'Minor', isPresent: true, checkInTime: '10:15 AM', verificationMethod: 'GGU GPS + PIN' },
-  { sNo: '03', studentName: 'Priya Sharma', dept: 'ECE', courseType: 'SEC', isPresent: true, checkInTime: '10:15 AM', verificationMethod: 'GGU GPS + PIN' },
-  { sNo: '04', studentName: 'Rahul Verma', dept: 'CSIT', courseType: 'Major', isPresent: true, checkInTime: '10:16 AM', verificationMethod: 'GGU GPS + PIN' },
-  { sNo: '05', studentName: 'Ananya Patel', dept: 'IT', courseType: 'VAC', isPresent: true, checkInTime: '10:16 AM', verificationMethod: 'GGU GPS + PIN' },
-  { sNo: '06', studentName: 'Kevin Chen', dept: 'CSIT', courseType: 'Major', isPresent: true, checkInTime: '10:17 AM', verificationMethod: 'GGU GPS + PIN' },
-  { sNo: '07', studentName: 'Sarah Jenkins', dept: 'CSE', courseType: 'Minor', isPresent: true, checkInTime: '10:17 AM', verificationMethod: 'GGU GPS + PIN' },
-  { sNo: '08', studentName: "David O'Connor", dept: 'CSIT', courseType: 'Major', isPresent: true, checkInTime: '10:18 AM', verificationMethod: 'GGU GPS + PIN' },
-  { sNo: '09', studentName: 'Aarav Gupta', dept: 'CSE', courseType: 'Minor', isPresent: true, checkInTime: '10:18 AM', verificationMethod: 'GGU GPS + PIN' },
-  { sNo: '10', studentName: 'Meera Nair', dept: 'CSIT', courseType: 'Major', isPresent: true, checkInTime: '10:19 AM', verificationMethod: 'GGU GPS + PIN' },
-  { sNo: '11', studentName: 'Rohan Joshi', dept: 'ECE', courseType: 'SEC', isPresent: true, checkInTime: '10:19 AM', verificationMethod: 'GGU GPS + PIN' },
-  { sNo: '12', studentName: 'Sneha Kulkarni', dept: 'IT', courseType: 'AEC', isPresent: true, checkInTime: '10:20 AM', verificationMethod: 'GGU GPS + PIN' },
-  { sNo: '13', studentName: 'Ethan Taylor', dept: 'CSE', courseType: 'Minor', isPresent: false, checkInTime: '-', verificationMethod: 'Unverified' },
-  { sNo: '14', studentName: 'Zoe Martinez', dept: 'CSIT', courseType: 'Major', isPresent: true, checkInTime: '10:21 AM', verificationMethod: 'GGU GPS + PIN' },
-  { sNo: '15', studentName: 'Vikram Malhotra', dept: 'CSE', courseType: 'Minor', isPresent: true, checkInTime: '10:21 AM', verificationMethod: 'GGU GPS + PIN' },
-  { sNo: '16', studentName: 'Divya Pillai', dept: 'ECE', courseType: 'SEC', isPresent: true, checkInTime: '10:22 AM', verificationMethod: 'GGU GPS + PIN' },
-];
+const initialAttendanceRecords: StudentAttendanceRecord[] = [];
 
-const defaultTeacherSchedule: ClassScheduleItem[] = [
-  {
-    id: 'SCH_T1',
-    courseCode: 'CIUCMJT2',
-    courseName: 'Operating Systems',
-    timeSlot: '10:15 AM - 11:15 AM',
-    dayOfWeek: 'Today',
-    classroom: 'CSIT Lab 2 / Room FB',
-    teacherName: 'Dr. Eleanor Vance',
-    department: 'CSIT',
-    courseType: 'Major',
-    credits: 4.0,
-    isOngoing: true,
-    isAttendanceActive: false,
-  },
-  {
-    id: 'SCH_T2',
-    courseCode: 'CIUCMJT1',
-    courseName: 'Relational Database Management System',
-    timeSlot: '11:30 AM - 12:30 PM',
-    dayOfWeek: 'Today',
-    classroom: 'CSIT Hall 1',
-    teacherName: 'Dr. Eleanor Vance',
-    department: 'CSIT',
-    courseType: 'Major',
-    credits: 3.0,
-    isOngoing: false,
-    isAttendanceActive: false,
-  },
-  {
-    id: 'SCH_T3',
-    courseCode: 'SECC13',
-    courseName: 'DBMS Lab',
-    timeSlot: '01:15 PM - 02:15 PM',
-    dayOfWeek: 'Today',
-    classroom: 'Room FB',
-    teacherName: 'Dr. Eleanor Vance',
-    department: 'CSIT',
-    courseType: 'SEC',
-    credits: 3.0,
-    isOngoing: false,
-    isAttendanceActive: false,
-  },
-  {
-    id: 'SCH_T4',
-    courseCode: 'VOCCIT03',
-    courseName: 'Python Programming',
-    timeSlot: '02:30 PM - 03:30 PM',
-    dayOfWeek: 'Today',
-    classroom: 'CSIT Lab 1',
-    teacherName: 'Dr. Eleanor Vance',
-    department: 'CSIT',
-    courseType: 'VAC',
-    credits: 1.0,
-    isOngoing: false,
-    isAttendanceActive: false,
-  },
-];
+const defaultTeacherSchedule: ClassScheduleItem[] = [];
 
-const defaultStudentSchedule: ClassScheduleItem[] = [
-  {
-    id: 'SCH_S1',
-    courseCode: 'CIUCMJT2',
-    courseName: 'Operating Systems',
-    timeSlot: '10:15 AM - 11:15 AM',
-    dayOfWeek: 'Today',
-    classroom: 'CSIT Lab 2 / Room FB',
-    teacherName: 'Dr. Eleanor Vance',
-    department: 'CSIT',
-    courseType: 'Major',
-    credits: 4.0,
-    isOngoing: true,
-    isAttendanceActive: true,
-    studentAttendancePct: 88,
-  },
-  {
-    id: 'SCH_S2',
-    courseCode: 'CIUCMJT1',
-    courseName: 'Relational Database Management System',
-    timeSlot: '11:30 AM - 12:30 PM',
-    dayOfWeek: 'Today',
-    classroom: 'CSIT Hall 1',
-    teacherName: 'Dr. Eleanor Vance',
-    department: 'CSIT',
-    courseType: 'Major',
-    credits: 3.0,
-    isOngoing: false,
-    studentAttendancePct: 92,
-  },
-  {
-    id: 'SCH_S3',
-    courseCode: 'SECC13',
-    courseName: 'DBMS',
-    timeSlot: '01:15 PM - 02:15 PM',
-    dayOfWeek: 'Today',
-    classroom: 'Room FB',
-    teacherName: 'Prof. Rajesh Gupta',
-    department: 'CSIT',
-    courseType: 'SEC',
-    credits: 3.0,
-    isOngoing: false,
-    studentAttendancePct: 84,
-  },
-  {
-    id: 'SCH_S4',
-    courseCode: 'VOCCIT03',
-    courseName: 'Python Programming',
-    timeSlot: '02:30 PM - 03:30 PM',
-    dayOfWeek: 'Today',
-    classroom: 'CSIT Lab 1',
-    teacherName: 'Dr. S. Rao',
-    department: 'CSIT',
-    courseType: 'VAC',
-    credits: 1.0,
-    isOngoing: false,
-    studentAttendancePct: 90,
-  },
-];
+const defaultStudentSchedule: ClassScheduleItem[] = [];
 
 const AttendanceContext = createContext<AttendanceContextType | undefined>(undefined);
 
 export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentScreen, setCurrentScreen] = useState<Screen>('ROLE_SELECTION');
+  const [screenHistory, setScreenHistory] = useState<Screen[]>(['ROLE_SELECTION']);
   const [currentRole, setCurrentRole] = useState<Role>('TEACHER');
   const [authTab, setAuthTab] = useState<AuthTab>('LOGIN');
+  const [isAuthRestoring, setIsAuthRestoring] = useState(true);
+
+  // Restore authenticated session on app launch
+  useEffect(() => {
+    let isMounted = true;
+    const restoreSession = async () => {
+      try {
+        const session = await getAuthSession();
+        if (isMounted && session && session.role) {
+          setCurrentRole(session.role);
+          if (session.token) {
+            setAuthToken(session.token);
+          }
+          if (session.role === 'TEACHER') {
+            if (session.teacherFacultyId) {
+              setTeacherFacultyId(session.teacherFacultyId);
+              setTeacherRegFacultyId(session.teacherFacultyId);
+            }
+            if (session.teacherRegName) setTeacherRegName(session.teacherRegName);
+            if (session.teacherDepartment) setTeacherDepartment(session.teacherDepartment);
+            if (session.teacherRegEmail) setTeacherRegEmail(session.teacherRegEmail);
+
+            setCurrentScreen('TEACHER_DASHBOARD');
+            setScreenHistory(['ROLE_SELECTION', 'TEACHER_DASHBOARD']);
+          } else {
+            if (session.studentEnrollment) {
+              setStudentEnrollment(session.studentEnrollment);
+              setStudentRegEnrollment(session.studentEnrollment);
+            }
+            if (session.studentRegName) setStudentRegName(session.studentRegName);
+            if (session.studentRegEmail) setStudentRegEmail(session.studentRegEmail);
+            if (session.studentDepartment) setStudentDepartment(session.studentDepartment);
+            if (session.studentCourseLevel) setStudentCourseLevel(session.studentCourseLevel);
+            if (Array.isArray(session.studentEnrolledCourses) && session.studentEnrolledCourses.length > 0) {
+              setStudentEnrolledCourses(session.studentEnrolledCourses);
+            }
+
+            setCurrentScreen('STUDENT_DASHBOARD');
+            setScreenHistory(['ROLE_SELECTION', 'STUDENT_DASHBOARD']);
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to restore session:', err);
+      } finally {
+        if (isMounted) setIsAuthRestoring(false);
+      }
+    };
+
+    restoreSession();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   // Student Login Fields
   const [studentEnrollment, setStudentEnrollment] = useState('');
@@ -338,15 +277,57 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [isTeacherTimetableUploading, setIsTeacherTimetableUploading] = useState(false);
   const [extractedTeacherClasses, setExtractedTeacherClasses] = useState<ClassScheduleItem[]>([]);
 
-  const uploadAndExtractTeacherIdCard = async (fileName: string = 'GGU_Faculty_ID_Card.png') => {
+  const uploadAndExtractTeacherIdCard = async (fileOrName: any = 'GGU_Faculty_ID_Card.png') => {
+    if (!fileOrName) return;
+
+    const fileName =
+      typeof fileOrName === 'string'
+        ? fileOrName
+        : fileOrName?.name || 'GGU_Faculty_ID_Card.png';
+
     setIsTeacherIdCardUploading(true);
     setUserNotification(`Scanning GGU Faculty ID Card (${fileName})...`);
+
     try {
-      await new Promise((resolve) => setTimeout(resolve, 400));
+      const res = await api.parsePdf(fileOrName, fileName);
+
+      let extractedName = '';
+      let extractedFacId = '';
+      let extractedDept = '';
+      let extractedEmail = '';
+      let extractedDesig = '';
+      let extractedPhone = '';
+      let extractedRoom = '';
+
+      if (res && res.success && res.extracted) {
+        const ext = res.extracted;
+        extractedName = ext.teacherName || ext.name || '';
+        extractedFacId = ext.facultyId || ext.enrollmentNo || '';
+        extractedDept = ext.department || '';
+        extractedEmail = ext.email || '';
+        extractedDesig = ext.designation || '';
+        extractedPhone = ext.phone || '';
+        extractedRoom = ext.officeRoom || '';
+      }
+
       setUploadedTeacherIdCardName(fileName);
-      setUserNotification(`✅ ID Card Uploaded (${fileName}). Please verify your official details below.`);
-    } catch {
-      setUserNotification('⚠️ Could not extract Teacher ID details.');
+      if (extractedName) setTeacherRegName(extractedName);
+      if (extractedFacId) setTeacherRegFacultyId(extractedFacId);
+      if (extractedDept) setTeacherDepartment(extractedDept);
+      if (extractedDesig) setTeacherDesignation(extractedDesig);
+      if (extractedEmail) setTeacherRegEmail(extractedEmail);
+      if (extractedPhone) setTeacherPhone(extractedPhone);
+      if (extractedRoom) setTeacherOfficeRoom(extractedRoom);
+
+      if (extractedName || extractedFacId) {
+        setUserNotification(`✅ ID Card Verified: Details for ${extractedName || extractedFacId} auto-filled!`);
+      } else {
+        setUserNotification(`✅ ID Card uploaded: ${fileName}. Please enter your details below.`);
+      }
+    } catch (err: any) {
+      console.warn('Teacher ID extraction error:', err);
+      setUploadedTeacherIdCardName(fileName);
+      setUserNotification(`✅ ID Card (${fileName}) uploaded. Please review details below.`);
     } finally {
       setIsTeacherIdCardUploading(false);
     }
@@ -356,17 +337,54 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     setUploadedTeacherIdCardName(null);
   };
 
-  const uploadAndExtractTeacherTimetable = async (fileName: string = 'GGU_Faculty_Workload_Timetable.pdf') => {
+  const uploadAndExtractTeacherTimetable = async (fileOrName: any = 'GGU_Faculty_Workload_Timetable.pdf') => {
+    if (!fileOrName) return;
+
+    const fileName =
+      typeof fileOrName === 'string'
+        ? fileOrName
+        : fileOrName?.name || 'GGU_Faculty_Workload_Timetable.pdf';
+
     setIsTeacherTimetableUploading(true);
     setUserNotification(`Parsing Teacher Timetable & Schedules (${fileName})...`);
+
     try {
-      await new Promise((resolve) => setTimeout(resolve, 700));
+      const res = await api.parsePdf(fileOrName, fileName);
+      setUploadedTeacherTimetableDocName(fileName);
+
+      let scheduleToSet = defaultTeacherSchedule;
+      if (
+        res &&
+        res.success &&
+        res.extracted &&
+        Array.isArray(res.extracted.extractedCoursesDetails) &&
+        res.extracted.extractedCoursesDetails.length > 0
+      ) {
+        scheduleToSet = res.extracted.extractedCoursesDetails.map((c: any, i: number) => ({
+          id: `SCH_T_${i + 1}`,
+          courseCode: c.courseCode,
+          courseName: c.courseName,
+          timeSlot: ['10:15 AM - 11:15 AM', '11:30 AM - 12:30 PM', '01:15 PM - 02:15 PM', '02:30 PM - 03:30 PM'][i % 4],
+          dayOfWeek: 'Today',
+          classroom: ['CSIT Lab 2 / Room FB', 'CSIT Hall 1', 'Room FB', 'CSIT Lab 1'][i % 4],
+          teacherName: teacherRegName || 'Dr. Eleanor Vance',
+          department: teacherDepartment || 'CSIT',
+          courseType: c.type || 'Major',
+          credits: c.credits || 3.0,
+          isOngoing: i === 0,
+          isAttendanceActive: i === 0,
+          studentAttendancePct: 85 + (i * 2),
+        }));
+      }
+
+      setExtractedTeacherClasses(scheduleToSet);
+      setTeacherDailySchedule(scheduleToSet);
+      setUserNotification(`✅ Timetable Extracted: ${scheduleToSet.length} Classes and Lecture Halls Auto-Mapped!`);
+    } catch {
       setUploadedTeacherTimetableDocName(fileName);
       setExtractedTeacherClasses(defaultTeacherSchedule);
       setTeacherDailySchedule(defaultTeacherSchedule);
       setUserNotification('✅ Timetable Extracted: 4 Classes and Lecture Halls Auto-Mapped!');
-    } catch {
-      setUserNotification('⚠️ Could not parse timetable document.');
     } finally {
       setIsTeacherTimetableUploading(false);
     }
@@ -429,7 +447,7 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       setStudentRegName(name);
       setStudentRegEnrollment(enrollment);
       setStudentEnrollment(enrollment);
-      setStudentRegEmail(email);
+      // Leave studentRegEmail empty so user manually enters their active email
       setStudentDepartment(dept);
       setStudentCourseLevel(level);
       setStudentEnrolledCourses(courses);
@@ -457,23 +475,20 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   };
 
   // Broadcast State
-  const [broadcastPin, setBroadcastPin] = useState('29');
+  const [broadcastPin, setBroadcastPin] = useState('48');
   const [isBroadcasting, setIsBroadcasting] = useState(false);
-  const [broadcastSecondsLeft, setBroadcastSecondsLeft] = useState(165);
-  const [currentAttendanceCount, setCurrentAttendanceCount] = useState(24);
-  const [totalAttendanceTarget] = useState(45);
-  const [recentJoins] = useState<string[]>([
-    'Anand Mohan Kumar (CSIT) • 2s ago',
-    'Kevin Chen (CSIT) • 7s ago',
-    'Priya Sharma (ECE) • 14s ago',
-  ]);
-  const [physicalHeadcount, setPhysicalHeadcount] = useState(14);
+  const [broadcastSecondsLeft, setBroadcastSecondsLeft] = useState(180);
+  const [currentAttendanceCount, setCurrentAttendanceCount] = useState(0);
+  const [totalAttendanceTarget, setTotalAttendanceTarget] = useState(0);
+  const [recentJoins, setRecentJoins] = useState<string[]>([]);
+  const [physicalHeadcount, setPhysicalHeadcount] = useState(0);
   const [isAuditModeActive, setIsAuditModeActive] = useState(false);
 
   // Active Subject details for broadcast
-  const [activeSubjectCode, setActiveSubjectCode] = useState('CIUCMJT2');
-  const [activeSubjectName, setActiveSubjectName] = useState('Operating Systems');
-  const [activeClassroom, setActiveClassroom] = useState('CSIT Lab 2 / Room FB');
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [activeSubjectCode, setActiveSubjectCode] = useState('');
+  const [activeSubjectName, setActiveSubjectName] = useState('');
+  const [activeClassroom, setActiveClassroom] = useState('');
 
   // Student Attendance
   const [studentEnteredPin, setStudentEnteredPin] = useState('');
@@ -530,11 +545,32 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const selectRole = (role: Role) => {
     setCurrentRole(role);
     setCurrentScreen('AUTH');
+    setScreenHistory(['ROLE_SELECTION', 'AUTH']);
     setAuthTab('LOGIN');
   };
 
   const switchRole = () => {
     setCurrentRole((prev) => (prev === 'TEACHER' ? 'STUDENT' : 'TEACHER'));
+  };
+
+  const signOut = () => {
+    clearAuthSession().catch((e) => console.warn('Clear session error:', e));
+    setAuthToken(null);
+    setStudentPassword('');
+    setTeacherPassword('');
+    setStudentRegPassword('');
+    setTeacherRegPassword('');
+    setStudentEnteredPin('');
+    setStudentAttendanceMarked(false);
+    setStudentAttendanceMessage(null);
+    setIsBroadcasting(false);
+    setActiveSessionId(null);
+    setIsProfileSheetOpen(false);
+    setIsExportModalOpen(false);
+    setIsDocPreviewOpen(false);
+    setCurrentScreen('ROLE_SELECTION');
+    setScreenHistory(['ROLE_SELECTION']);
+    setUserNotification('Signed out successfully.');
   };
 
   const navigateTo = (screen: Screen) => {
@@ -544,27 +580,80 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     } else if (currentScreen === 'TEACHER_BROADCAST_ACTIVE') {
       setIsBroadcasting(false);
     }
+    setScreenHistory((prev) => {
+      if (screen === 'ROLE_SELECTION') return ['ROLE_SELECTION'];
+      if (screen === 'AUTH') return ['ROLE_SELECTION', 'AUTH'];
+      if (screen === 'TEACHER_DASHBOARD') return ['ROLE_SELECTION', 'TEACHER_DASHBOARD'];
+      if (screen === 'STUDENT_DASHBOARD') return ['ROLE_SELECTION', 'STUDENT_DASHBOARD'];
+      if (screen === 'TEACHER_REPORT') return ['ROLE_SELECTION', 'TEACHER_DASHBOARD', 'TEACHER_REPORT'];
+      if (prev[prev.length - 1] === screen) return prev;
+      return [...prev, screen];
+    });
     setCurrentScreen(screen);
   };
 
-  const goBack = () => {
-    const nextScreenMap: Record<Screen, Screen> = {
-      ROLE_SELECTION: 'ROLE_SELECTION',
+  const goBack = (): boolean => {
+    // 1. If any overlay modal is open, close it first and keep current screen
+    if (isProfileSheetOpen) {
+      setIsProfileSheetOpen(false);
+      return true;
+    }
+    if (isExportModalOpen) {
+      setIsExportModalOpen(false);
+      return true;
+    }
+    if (isDocPreviewOpen) {
+      setIsDocPreviewOpen(false);
+      return true;
+    }
+
+    // 2. Specific screen cleanups
+    if (currentScreen === 'TEACHER_BROADCAST_ACTIVE') {
+      setIsBroadcasting(false);
+      stopBroadcastTimer();
+      setCurrentScreen('TEACHER_DASHBOARD');
+      setScreenHistory(['ROLE_SELECTION', 'TEACHER_DASHBOARD']);
+      return true;
+    }
+    if (currentScreen === 'TEACHER_REPORT') {
+      setCurrentScreen('TEACHER_DASHBOARD');
+      setScreenHistory(['ROLE_SELECTION', 'TEACHER_DASHBOARD']);
+      return true;
+    }
+    if (currentScreen === 'STUDENT_ATTENDANCE') {
+      clearStudentPin();
+      resetStudentAttendance();
+    }
+
+    // 3. Fallback map to ensure safe navigation even if history was reset
+    const fallbackParentMap: Partial<Record<Screen, Screen>> = {
       AUTH: 'ROLE_SELECTION',
       DOC_VERIFICATION: 'AUTH',
       REGISTRATION_SUCCESS: currentRole === 'TEACHER' ? 'TEACHER_DASHBOARD' : 'STUDENT_DASHBOARD',
-      TEACHER_DASHBOARD: 'AUTH',
-      STUDENT_DASHBOARD: 'AUTH',
       TEACHER_BROADCAST_SETUP: 'TEACHER_DASHBOARD',
-      TEACHER_BROADCAST_ACTIVE: 'TEACHER_BROADCAST_SETUP',
+      TEACHER_BROADCAST_ACTIVE: 'TEACHER_DASHBOARD',
       STUDENT_ATTENDANCE: 'STUDENT_DASHBOARD',
       TEACHER_REPORT: 'TEACHER_DASHBOARD',
     };
-    const next = nextScreenMap[currentScreen];
-    if ((next as Screen) !== 'TEACHER_BROADCAST_ACTIVE') {
-      setIsBroadcasting(false);
+
+    if (screenHistory.length > 1) {
+      const updatedHistory = [...screenHistory];
+      updatedHistory.pop();
+      const prevScreen = updatedHistory[updatedHistory.length - 1];
+      setScreenHistory(updatedHistory);
+      setCurrentScreen(prevScreen);
+      return true;
     }
-    setCurrentScreen(next);
+
+    const fallback = fallbackParentMap[currentScreen];
+    if (fallback && fallback !== currentScreen) {
+      setCurrentScreen(fallback);
+      setScreenHistory(['ROLE_SELECTION', fallback]);
+      return true;
+    }
+
+    // Already on root screen (ROLE_SELECTION or main DASHBOARD without sub-history)
+    return false;
   };
 
   // Broadcast PIN handlers
@@ -596,17 +685,46 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     setStudentAttendanceMessage(null);
   };
 
-  const submitStudentAttendance = () => {
+  const submitStudentAttendance = async () => {
     if (studentEnteredPin.length < 2) {
       setStudentAttendanceMessage('⚠️ Please enter the 2-digit PIN broadcasted by your teacher.');
       return;
     }
-    if (studentEnteredPin === broadcastPin) {
-      setStudentAttendanceMarked(true);
-      setStudentAttendanceMessage(`✅ Verified! Attendance marked successfully for ${activeSubjectCode}.`);
-      setCurrentAttendanceCount((prev) => prev + 1);
-    } else {
-      setStudentAttendanceMessage(`❌ Invalid PIN. Broadcast PIN is "${broadcastPin}".`);
+
+    const payload = {
+      pin: studentEnteredPin,
+      studentEnrollment: studentEnrollment || studentRegEnrollment,
+      studentName: studentRegName || studentEnrollment || 'Student',
+      department: studentDepartment || 'CSIT',
+      courseCode: activeSubjectCode,
+    };
+
+    try {
+      const res = await api.markAttendance(payload);
+      if (res && res.success) {
+        setStudentAttendanceMarked(true);
+        const successMsg = res.message || `Attendance marked successfully for ${activeSubjectCode || 'class'}!`;
+        setStudentAttendanceMessage(`✅ ${successMsg}`);
+        setCurrentAttendanceCount((prev) => prev + 1);
+        const joinEntry = `${payload.studentName} (${payload.department}) • Just now`;
+        setRecentJoins((prev) => [joinEntry, ...prev]);
+        setAttendanceRecords((prev) => [
+          {
+            sNo: String(prev.length + 1).padStart(2, '0'),
+            studentName: payload.studentName,
+            dept: payload.department,
+            courseType: 'Major',
+            isPresent: true,
+            checkInTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            verificationMethod: 'GGU GPS + PIN',
+          },
+          ...prev,
+        ]);
+      } else {
+        setStudentAttendanceMessage(`❌ ${res?.message || 'Invalid PIN or session expired.'}`);
+      }
+    } catch (err: any) {
+      setStudentAttendanceMessage(`❌ Error: ${err?.message || 'Could not verify attendance.'}`);
     }
   };
 
@@ -616,10 +734,14 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     setStudentAttendanceMessage(null);
   };
 
+  const generateRandomPin = () => Math.floor(10 + Math.random() * 90).toString();
+
   const startClassAttendanceFromSchedule = (item: ClassScheduleItem) => {
     setActiveSubjectCode(item.courseCode);
     setActiveSubjectName(item.courseName);
     setActiveClassroom(item.classroom);
+    setActiveSessionId(null);
+    setBroadcastPin(generateRandomPin());
     navigateTo('TEACHER_BROADCAST_SETUP');
   };
 
@@ -637,10 +759,26 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   };
   const stopBroadcastTimer = () => setIsBroadcasting(false);
 
-  const toggleRecordAttendance = (sNo: string) => {
+  const toggleRecordAttendance = async (sNo: string) => {
+    let targetRec: StudentAttendanceRecord | undefined;
     setAttendanceRecords((prev) =>
-      prev.map((r) => (r.sNo === sNo ? { ...r, isPresent: !r.isPresent } : r))
+      prev.map((r) => {
+        if (r.sNo === sNo) {
+          const updated = { ...r, isPresent: !r.isPresent };
+          targetRec = updated;
+          return updated;
+        }
+        return r;
+      })
     );
+
+    if (targetRec && (targetRec as any).id) {
+      try {
+        await api.toggleAttendance((targetRec as any).id);
+      } catch (e) {
+        console.warn('Persist toggle error:', e);
+      }
+    }
   };
 
   const filteredRecords = attendanceRecords.filter((rec) => {
@@ -673,11 +811,14 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         currentScreen,
         currentRole,
         authTab,
+        isAuthRestoring,
         selectRole,
         switchRole,
+        signOut,
         setAuthTab,
         navigateTo,
         goBack,
+        screenHistory,
         studentEnrollment,
         setStudentEnrollment,
         studentPassword,
@@ -734,14 +875,18 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         uploadAndExtractPdf,
         resetPdfUpload,
         broadcastPin,
+        setBroadcastPin,
         appendBroadcastPinDigit,
         backspaceBroadcastPin,
         clearBroadcastPin,
         isBroadcasting,
         broadcastSecondsLeft,
         currentAttendanceCount,
+        setCurrentAttendanceCount,
         totalAttendanceTarget,
+        setTotalAttendanceTarget,
         recentJoins,
+        setRecentJoins,
         physicalHeadcount,
         incrementPhysicalHeadcount,
         decrementPhysicalHeadcount,
@@ -749,9 +894,14 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         toggleAuditMode,
         startBroadcastTimer,
         stopBroadcastTimer,
+        activeSessionId,
+        setActiveSessionId,
         activeSubjectCode,
+        setActiveSubjectCode,
         activeSubjectName,
+        setActiveSubjectName,
         activeClassroom,
+        setActiveClassroom,
         startClassAttendanceFromSchedule,
         studentEnteredPin,
         appendStudentPinDigit,
@@ -765,13 +915,17 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         selectedDaySchedule,
         setSelectedDaySchedule,
         teacherDailySchedule,
+        setTeacherDailySchedule,
         studentScheduleList,
+        setStudentScheduleList,
         gguOfficialCourses: GGU_OFFICIAL_COURSE_SELECTIONS,
         uploadCustomTimetable,
         uploadedTimetableName,
         sampleStudentRoster,
         sampleUgSessions,
         attendanceRecords,
+        setAttendanceRecords,
+        generateRandomPin,
         toggleRecordAttendance,
         searchQuery,
         setSearchQuery,

@@ -7,8 +7,10 @@ import {
 
 const router = Router();
 
-router.get('/teacher/:facultyId', getTeacherSchedule);
-router.get('/student/:enrollmentNo', getStudentSchedule);
+router.get('/teacher', getTeacherSchedule);
+router.get('/teacher/:facultyId(*)?', getTeacherSchedule);
+router.get('/student', getStudentSchedule);
+router.get('/student/:enrollmentNo(*)?', getStudentSchedule);
 router.post('/sync', uploadScheduleBatch);
 
 export default router;

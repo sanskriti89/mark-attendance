@@ -19,6 +19,17 @@ if (fs.existsSync(path.resolve(process.cwd(), 'backend/.env'))) {
   dotenv.config({ path: path.resolve(process.cwd(), 'backend/.env'), override: true });
 }
 
+process.on('uncaughtException', (err: any) => {
+  console.error('⚠️ [UncaughtException Guarded]:', err.message);
+  if (err.code === 'EADDRINUSE') {
+    console.error('💥 [Server Fatal] Port is in use, terminating cleanly to avoid zombie state.');
+    process.exit(1);
+  }
+});
+process.on('unhandledRejection', (reason: any) => {
+  console.error('⚠️ [UnhandledRejection Guarded]:', reason?.message || reason);
+});
+
 const app = express();
 const server = http.createServer(app);
 
@@ -28,11 +39,22 @@ const CORS_ORIGIN = process.env.CORS_ORIGIN || '*';
 // Initialize Socket.io
 initSocket(server, CORS_ORIGIN);
 
+// Disable ETag globally to prevent 304 Not Modified caching on dynamic polling
+app.set('etag', false);
+
 // Middlewares
 app.use(cors({ origin: CORS_ORIGIN, credentials: true }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan('dev'));
+
+// Ensure no caching on dynamic API routes
+app.use('/api', (_req, res, next) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
+  next();
+});
 
 // Health check endpoint
 app.get('/health', (_req, res) => {
@@ -99,6 +121,21 @@ app.get('*', (req, res, next) => {
 
 // Connect to MongoDB and Start Server
 import os from 'os';
+
+server.on('error', (err: any) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`💥 [Server] Port ${PORT} is already in use. Exiting cleanly...`);
+    process.exit(1);
+  }
+});
+
+const gracefulShutdown = () => {
+  server.close(() => {
+    process.exit(0);
+  });
+};
+process.on('SIGINT', gracefulShutdown);
+process.on('SIGTERM', gracefulShutdown);
 
 connectDB().then(() => {
   server.listen(Number(PORT), '0.0.0.0', () => {

@@ -1,21 +1,25 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
   ScrollView,
   StyleSheet,
+  ActivityIndicator,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors } from '../theme/colors';
 import { useAttendance } from '../context/AttendanceContext';
 import { ClassScheduleItem } from '../data/types';
+import { api } from '../services/api';
 
 export const TeacherDashboardScreen: React.FC = () => {
   const {
     teacherRegName,
+    teacherRegFacultyId,
     teacherDepartment,
     teacherDailySchedule,
+    setTeacherDailySchedule,
     selectedDaySchedule,
     setSelectedDaySchedule,
     startClassAttendanceFromSchedule,
@@ -23,6 +27,30 @@ export const TeacherDashboardScreen: React.FC = () => {
     goBack,
     setIsProfileSheetOpen,
   } = useAttendance();
+
+  const [isLoadingSchedule, setIsLoadingSchedule] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadSchedule = async () => {
+      const facId = teacherRegFacultyId || 'EMP/2026/8042';
+      setIsLoadingSchedule(true);
+      try {
+        const res = await api.getTeacherSchedule(facId, selectedDaySchedule);
+        if (isMounted && res && res.success && Array.isArray(res.schedules)) {
+          setTeacherDailySchedule(res.schedules);
+        }
+      } catch (err) {
+        console.warn('Error loading schedule:', err);
+      } finally {
+        if (isMounted) setIsLoadingSchedule(false);
+      }
+    };
+    loadSchedule();
+    return () => {
+      isMounted = false;
+    };
+  }, [teacherRegFacultyId, selectedDaySchedule]);
 
   const teacherName = teacherRegName || 'Faculty Member';
   const department = teacherDepartment || 'GGU';
@@ -66,7 +94,11 @@ export const TeacherDashboardScreen: React.FC = () => {
         <View style={styles.heroCard}>
           <View style={styles.heroTopRow}>
             <View style={styles.pillLight}>
-              <Text style={styles.pillLightText}>TODAY'S TEACHING TIMETABLE</Text>
+              <Text style={styles.pillLightText}>
+                {selectedDaySchedule === 'Today'
+                  ? "TODAY'S TEACHING TIMETABLE"
+                  : `${selectedDaySchedule.toUpperCase()}'S TIMETABLE`}
+              </Text>
             </View>
             <View style={styles.liveIndicator}>
               <View style={styles.liveDot} />
@@ -76,8 +108,10 @@ export const TeacherDashboardScreen: React.FC = () => {
 
           <Text style={styles.heroName}>{teacherName}</Text>
           <Text style={styles.heroSub}>
-            Department of {department} • {teacherDailySchedule.length} Teaching Slots
-            Scheduled Today
+            Department of {department} •{' '}
+            {teacherDailySchedule.length === 0
+              ? `No teaching slots scheduled ${selectedDaySchedule === 'Today' ? 'today' : `on ${selectedDaySchedule}`}`
+              : `${teacherDailySchedule.length} Teaching Slot${teacherDailySchedule.length > 1 ? 's' : ''} Scheduled ${selectedDaySchedule === 'Today' ? 'Today' : `on ${selectedDaySchedule}`}`}
           </Text>
         </View>
 
@@ -110,9 +144,29 @@ export const TeacherDashboardScreen: React.FC = () => {
         </View>
 
         {/* Schedule Class Cards */}
-        {teacherDailySchedule.map((item) => (
+        {isLoadingSchedule && teacherDailySchedule.length === 0 ? (
+          <View style={{ alignItems: 'center', backgroundColor: Colors.white, borderRadius: 16, padding: 32, gap: 12, borderWidth: 1, borderColor: Colors.slate200 }}>
+            <ActivityIndicator size="large" color={Colors.teacherOrange} />
+            <Text style={{ fontSize: 14, color: Colors.slate600, fontWeight: '500' }}>
+              Loading teaching schedule from database...
+            </Text>
+          </View>
+        ) : teacherDailySchedule.length === 0 ? (
+          <View style={{ alignItems: 'center', backgroundColor: Colors.white, borderRadius: 16, padding: 28, gap: 10, borderWidth: 1, borderColor: Colors.slate200 }}>
+            <MaterialIcons name="event-available" size={40} color={Colors.teacherOrange} />
+            <Text style={{ fontSize: 16, fontWeight: '700', color: Colors.slate800 }}>
+              No Classes Scheduled {selectedDaySchedule === 'Today' ? 'Today' : `on ${selectedDaySchedule}`}
+            </Text>
+            <Text style={{ fontSize: 13, color: Colors.slate500, textAlign: 'center', maxWidth: 320, lineHeight: 19 }}>
+              {selectedDaySchedule === 'Today'
+                ? 'You have no teaching slots scheduled for today. Select Monday to Friday chips above to view your assigned classes and start attendance.'
+                : `You have no teaching slots assigned on ${selectedDaySchedule}. Select another day above.`}
+            </Text>
+          </View>
+        ) : (
+          teacherDailySchedule.map((item, index) => (
           <View
-            key={item.id}
+            key={item.id || (item as any)._id || `${item.courseCode}_${index}`}
             style={[styles.classCard, item.isOngoing && styles.classCardOngoing]}
           >
             <View style={styles.classCardTop}>
@@ -165,7 +219,7 @@ export const TeacherDashboardScreen: React.FC = () => {
               </TouchableOpacity>
             </View>
           </View>
-        ))}
+        )))}
       </ScrollView>
     </View>
   );

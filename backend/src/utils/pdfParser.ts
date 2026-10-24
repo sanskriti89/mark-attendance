@@ -19,6 +19,11 @@ export interface ExtractedStudentDetails {
   enrolledCourses: string[]; // ["CIUCMJT1: Relational Database Management System", ...]
   extractedCoursesDetails: ExtractedCourse[]; // Structured course array
   rawTextPreview: string;
+  teacherName?: string;
+  facultyId?: string;
+  designation?: string;
+  phone?: string;
+  officeRoom?: string;
 }
 
 export const KNOWN_GGU_COURSES: Record<string, { name: string; credits: number; type: string; term?: string }> = {
@@ -73,6 +78,11 @@ function extractJpegImagesFromPdf(buffer: Buffer): Buffer[] {
 export const parsePdfBuffer = async (buffer: Buffer, fileName: string = ''): Promise<ExtractedStudentDetails> => {
   let rawText = '';
 
+  // Safe guard: If buffer is empty or too small
+  if (!buffer || buffer.length < 50) {
+    return extractDetailsFromText('');
+  }
+
   const isImageFile =
     fileName.toLowerCase().endsWith('.png') ||
     fileName.toLowerCase().endsWith('.jpg') ||
@@ -81,12 +91,14 @@ export const parsePdfBuffer = async (buffer: Buffer, fileName: string = ''): Pro
       ((buffer[0] === 0x89 && buffer[1] === 0x50) || (buffer[0] === 0xFF && buffer[1] === 0xD8)));
 
   if (isImageFile) {
-    console.log(`🖼️ [OCR] Direct Image file detected (${fileName}), running Tesseract OCR...`);
-    try {
-      const { data } = await Tesseract.recognize(buffer, 'eng');
-      rawText = data?.text || '';
-    } catch (ocrErr: any) {
-      console.warn('[OCR Error on Image]', ocrErr.message);
+    if (buffer.length >= 100) {
+      console.log(`🖼️ [OCR] Direct Image file detected (${fileName}, ${buffer.length} bytes), running Tesseract OCR...`);
+      try {
+        const { data } = await Tesseract.recognize(buffer, 'eng');
+        rawText = data?.text || '';
+      } catch (ocrErr: any) {
+        console.warn('[OCR Error on Image]', ocrErr.message);
+      }
     }
   } else {
     // 1. First attempt: standard PDF text layer extraction
@@ -103,12 +115,12 @@ export const parsePdfBuffer = async (buffer: Buffer, fileName: string = ''): Pro
     // 2. Check if the PDF is an image-based / scanned PDF (e.g. text is empty or just "-- 1 of 1 --")
     const isImagePdf = !rawText || rawText.replace(/--\s*\d+\s*of\s*\d+\s*--/gi, '').trim().length < 25;
 
-    if (isImagePdf) {
+    if (isImagePdf && buffer.length >= 500) {
       console.log(`📸 [OCR] PDF text layer is empty or scanned image. Extracting embedded images for OCR...`);
       const embeddedJpegs = extractJpegImagesFromPdf(buffer);
       console.log(`📸 [OCR] Found ${embeddedJpegs.length} embedded images in PDF.`);
 
-      if (embeddedJpegs.length > 0) {
+      if (embeddedJpegs.length > 0 && embeddedJpegs[0].length >= 500) {
         try {
           console.log(`📸 [OCR] Running Tesseract OCR on primary page image (${embeddedJpegs[0].length} bytes)...`);
           const { data } = await Tesseract.recognize(embeddedJpegs[0], 'eng');
@@ -208,21 +220,44 @@ export const extractDetailsFromText = (rawText: string): ExtractedStudentDetails
     department = 'PHARMACY';
   }
 
-  // 4. Course Level (UG vs PG)
-  let courseLevel = '';
-  if (/Bachelor|BSCS|B\.?Sc|B\.?Tech|BCA|BBA|B\.?Com|B\.?A\b|UG/i.test(rawText)) {
-    courseLevel = 'UG';
-  } else if (/Master|M\.?Sc|M\.?Tech|MCA|MBA|M\.?Com|M\.?A\b|PG|Doctor/i.test(rawText)) {
-    courseLevel = 'PG';
+  // 4. Course Level & Dynamic Semester Detection
+  let semesterStr = '1ST SEMESTER';
+  if (/\b(?:1ST|FIRST|1)\s*(?:SEM|SEMESTER)\b|\bSEMESTER\s*[:.\-_| ]*1\b|\bI\s*SEMESTER\b/i.test(rawText)) {
+    semesterStr = '1ST SEMESTER';
+  } else if (/\b(?:2ND|SECOND|2)\s*(?:SEM|SEMESTER)\b|\bSEMESTER\s*[:.\-_| ]*2\b|\bII\s*SEMESTER\b/i.test(rawText)) {
+    semesterStr = '2ND SEMESTER';
+  } else if (/\b(?:3RD|THIRD|3)\s*(?:SEM|SEMESTER)\b|\bSEMESTER\s*[:.\-_| ]*3\b|\bIII\s*SEMESTER\b/i.test(rawText)) {
+    semesterStr = '3RD SEMESTER';
+  } else if (/\b(?:4TH|FOURTH|4)\s*(?:SEM|SEMESTER)\b|\bSEMESTER\s*[:.\-_| ]*4\b|\bIV\s*SEMESTER\b/i.test(rawText)) {
+    semesterStr = '4TH SEMESTER';
+  } else if (/\b(?:5TH|FIFTH|5)\s*(?:SEM|SEMESTER)\b|\bSEMESTER\s*[:.\-_| ]*5\b|\bV\s*SEMESTER\b/i.test(rawText)) {
+    semesterStr = '5TH SEMESTER';
+  } else if (/\b(?:6TH|SIXTH|6)\s*(?:SEM|SEMESTER)\b|\bSEMESTER\s*[:.\-_| ]*6\b|\bVI\s*SEMESTER\b/i.test(rawText)) {
+    semesterStr = '6TH SEMESTER';
+  } else if (/\b(?:7TH|SEVENTH|7)\s*(?:SEM|SEMESTER)\b|\bSEMESTER\s*[:.\-_| ]*7\b|\bVII\s*SEMESTER\b/i.test(rawText)) {
+    semesterStr = '7TH SEMESTER';
+  } else if (/\b(?:8TH|EIGHTH|8)\s*(?:SEM|SEMESTER)\b|\bSEMESTER\s*[:.\-_| ]*8\b|\bVIII\s*SEMESTER\b/i.test(rawText)) {
+    semesterStr = '8TH SEMESTER';
   }
 
-  // 5. Email Extraction
+  // If enrollment number has 25 (GGV/25/...) -> admitted in 2025 -> 1ST SEMESTER
+  if (enrollmentNo && (/GGV\/25\//i.test(enrollmentNo) || enrollmentNo.includes('/25/'))) {
+    semesterStr = '1ST SEMESTER';
+  }
+
+  const isBcaSlip =
+    /BCA|BACHELOR\s+OF\s+COMPUTER\s+APPLICATION/i.test(rawText) ||
+    (enrollmentNo && enrollmentNo.includes('/251/')) ||
+    (department === 'CSIT' && /BCA/i.test(rawText));
+
+  const degreeTitle = isBcaSlip ? 'BCA' : 'B.SC. (CS)';
+  let courseLevel = `${semesterStr} • ${degreeTitle} (NEP 2020)`;
+
+  // 5. Email Extraction (Never generate fake or random emails - students fill their real email manually)
   const emailMatch = rawText.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
   let email = '';
   if (emailMatch) {
     email = emailMatch[0].toLowerCase().trim();
-  } else if (name) {
-    email = `${name.toLowerCase().replace(/[^a-z0-9]/g, '.')}@ggu.ac.in`;
   }
 
 
@@ -272,7 +307,7 @@ export const extractDetailsFromText = (rawText: string): ExtractedStudentDetails
     const known = KNOWN_GGU_COURSES[cleanCode] || KNOWN_GGU_COURSES[cleanCode.replace(/[-_]/g, '')];
     let finalTitle = cleanCourseTitle(title || '');
     let finalCredits = creditsVal || (known ? known.credits : 3.0);
-    let finalTerm = termVal || '3 SEMESTER';
+    let finalTerm = termVal || semesterStr;
     let finalType = typeVal;
 
     // Separate term from type if "SEMESTER" is in typeVal
@@ -412,11 +447,66 @@ export const extractDetailsFromText = (rawText: string): ExtractedStudentDetails
     (c) => `${c.courseCode}: ${c.courseName}`
   );
 
+  // --- Teacher-Specific Profile Extraction ---
+  let facultyId = '';
+  const facIdDirectMatch = rawText.match(/\b(?:FAC|EMP|GGU[-_]?FAC)[-_/][A-Za-z0-9\-_/]+\b/i);
+  if (facIdDirectMatch) {
+    facultyId = facIdDirectMatch[0].trim().toUpperCase();
+  } else {
+    const facLabelMatch = rawText.match(
+      /(?:Faculty\s*(?:ID|Code|No)|Emp(?:loyee)?\s*(?:ID|Code|No)|Teacher\s*ID|ID\s*No\.?)[\s:.\-_|=]+([A-Za-z0-9\-_/]+)/i
+    );
+    if (facLabelMatch && !/^(FACULTY|CARD|SMART)$/i.test(facLabelMatch[1])) {
+      facultyId = facLabelMatch[1].trim().toUpperCase();
+    }
+  }
+
+  let teacherName = '';
+  const teacherNameLabel = rawText.match(
+    /(?:Faculty\s*Name|Teacher\s*Name|Employee\s*Name|Name\s*of\s*Faculty|Name)[\s:.\-_|]+((?:Dr\.|Prof\.|Doctor|Professor\s*)?[A-Za-z\s.]{3,35}?)(?=\r|\n|$|\s+(?:Faculty|ID|Designation|Department|Email|Phone|Mobile|Office|Session|Cabin))/i
+  );
+  if (teacherNameLabel) {
+    teacherName = teacherNameLabel[1].trim().replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ');
+  } else {
+    const drProfMatch = rawText.match(/\b(?:Dr\.|Prof\.|Doctor|Professor)\s+[A-Za-z\s.]{3,28}(?=\r|\n|$|\s+(?:Faculty|ID|Designation|Department|Email|Phone|Mobile|Office))/i);
+    if (drProfMatch) {
+      teacherName = drProfMatch[0].trim().replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ');
+    }
+  }
+
+  let designation = '';
+  const desigMatch = rawText.match(
+    /\b(Assistant\s*Professor(?:\s*\(Grade\s*[I|V|X\d]+\))?|Associate\s*Professor|Professor|Head\s*of\s*(?:the\s*)?Department|HOD|Dean|Senior\s*Professor|Lecturer|Guest\s*Faculty)\b/i
+  );
+  if (desigMatch) {
+    designation = desigMatch[1].trim();
+  }
+
+  let phone = '';
+  const phoneMatch = rawText.match(/(?:Phone|Mobile|Contact|Cell|Tel)[\s:.\-_|]+(\+?[0-9\s\-]{10,14})/i);
+  if (phoneMatch) {
+    phone = phoneMatch[1].trim();
+  } else {
+    const directPhoneMatch = rawText.match(/(?:\+91[\s\-]?)?[6-9]\d{9}\b/);
+    if (directPhoneMatch) {
+      phone = directPhoneMatch[0].trim();
+    }
+  }
+
+  let officeRoom = '';
+  const roomMatch = rawText.match(/(?:Office|Room|Cabin|Cabin\s*No|Room\s*No)[\s:.\-_|]+([A-Za-z0-9\s\-,\/]{2,30})/i);
+  if (roomMatch) {
+    officeRoom = roomMatch[1].trim();
+  }
+
   console.log('[OCR/Parse Final Output]', {
     enrollmentNo,
     name,
     department,
     courseLevel,
+    facultyId,
+    teacherName,
+    designation,
     coursesCount: extractedCoursesDetails.length,
     extractedCoursesDetails,
   });
@@ -430,5 +520,10 @@ export const extractDetailsFromText = (rawText: string): ExtractedStudentDetails
     enrolledCourses,
     extractedCoursesDetails,
     rawTextPreview: rawText.slice(0, 300),
+    teacherName: teacherName || (name.startsWith('DR.') || name.startsWith('PROF.') ? name : ''),
+    facultyId,
+    designation,
+    phone,
+    officeRoom,
   };
 };

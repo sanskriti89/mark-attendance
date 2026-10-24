@@ -10,12 +10,24 @@
     },
     "android": {
       "package": "com.attendiq.app",
+      "usesCleartextTraffic": true,
       "adaptiveIcon": {
         "backgroundColor": "#ffffff"
       }
     },
+    "androidStatusBar": {
+      "barStyle": "dark-content",
+      "backgroundColor": "#ffffff",
+      "translucent": true
+    },
     "web": {
       "bundler": "metro"
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "cb8926ed-9c1e-4e3d-85b9-e13c334f3d7b"
+      }
+    },
+    "owner": "ggvattendence"
   }
 }

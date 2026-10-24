@@ -13,12 +13,14 @@ export const DocumentVerificationScreen: React.FC = () => {
     studentRegName,
     studentRegEnrollment,
     studentRegEmail,
+    setStudentRegEmail,
     studentRegPassword,
     studentCourseLevel,
     studentEnrolledCourses,
     teacherRegName,
     teacherRegFacultyId,
     teacherRegEmail,
+    setTeacherRegEmail,
     teacherRegPassword,
     teacherDesignation,
     teacherPhone,
@@ -53,16 +55,30 @@ export const DocumentVerificationScreen: React.FC = () => {
         const payload = {
           name: teacherRegName,
           facultyId: teacherRegFacultyId,
-          email: teacherRegEmail || `${teacherRegFacultyId.toLowerCase().replace(/[^a-z0-9]/g, '')}@ggu.ac.in`,
+          email: (teacherRegEmail || '').trim(),
           password: teacherRegPassword,
           department: teacherDepartment,
           designation: teacherDesignation || 'Assistant Professor',
           phone: teacherPhone || '',
           officeRoom: teacherOfficeRoom || '',
+          schedules: extractedTeacherClasses || [],
+          coursesTaught: extractedTeacherClasses?.map((c) => `${c.courseCode}: ${c.courseName}`) || [],
         };
         const res = await api.registerTeacher(payload);
         if (res && res.success) {
           if (res.token) setAuthToken(res.token);
+          if (res.user && res.user.email) {
+            setTeacherRegEmail(res.user.email);
+          } else if (payload.email) {
+            setTeacherRegEmail(payload.email);
+          }
+          if (extractedTeacherClasses && extractedTeacherClasses.length > 0) {
+            try {
+              await api.syncSchedule('TEACHER', teacherRegFacultyId, extractedTeacherClasses);
+            } catch (syncErr) {
+              console.warn('Schedule sync error:', syncErr);
+            }
+          }
           setUserNotification(`✅ Faculty registered successfully: ${teacherRegName}`);
           navigateTo('REGISTRATION_SUCCESS');
         } else {
@@ -75,15 +91,26 @@ export const DocumentVerificationScreen: React.FC = () => {
         const payload = {
           name: studentRegName,
           enrollmentNo: studentRegEnrollment,
-          email: studentRegEmail || `${studentRegEnrollment.toLowerCase().replace(/[^a-z0-9]/g, '')}@ggu.ac.in`,
+          email: (studentRegEmail || '').trim(),
           password: studentRegPassword,
           department: studentDepartment,
-          courseLevel: studentCourseLevel || 'UG - Bachelor of Science (Hons)',
+          courseLevel:
+            studentCourseLevel && !['UG', 'PG', ''].includes(studentCourseLevel.trim())
+              ? studentCourseLevel
+              : (studentRegEnrollment && studentRegEnrollment.includes('/251/')) ||
+                (studentDepartment && /BCA|APPLICATION/i.test(studentDepartment))
+              ? '1ST SEMESTER • BCA (NEP 2020)'
+              : '1ST SEMESTER • B.SC. (CS) (NEP 2020)',
           enrolledCourses: studentEnrolledCourses || [],
         };
         const res = await api.registerStudent(payload);
         if (res && res.success) {
           if (res.token) setAuthToken(res.token);
+          if (res.user && res.user.email) {
+            setStudentRegEmail(res.user.email);
+          } else if (payload.email) {
+            setStudentRegEmail(payload.email);
+          }
           setUserNotification(`✅ Student registered successfully: ${studentRegName}`);
           navigateTo('REGISTRATION_SUCCESS');
         } else {
@@ -143,6 +170,14 @@ export const DocumentVerificationScreen: React.FC = () => {
             <Text style={styles.deptSub}>
               {isTeacher ? `${teacherDesignation} • ` : ''}Dept of {isTeacher ? teacherDepartment : studentDepartment} • GGU Bilaspur
             </Text>
+            {!isTeacher && (
+              <View style={[styles.verifiedDocChip, { backgroundColor: brandColor + '15', marginTop: 6 }]}>
+                <MaterialIcons name="school" size={14} color={brandColor} />
+                <Text style={[styles.verifiedDocChipText, { color: brandColor, fontWeight: '700' }]}>
+                  {studentCourseLevel || ((studentRegEnrollment && studentRegEnrollment.includes('/251/')) || (studentDepartment && /BCA|APPLICATION/i.test(studentDepartment)) ? '1ST SEMESTER • BCA (NEP 2020)' : '1ST SEMESTER • B.SC. (CS) (NEP 2020)')}
+                </Text>
+              </View>
+            )}
             {isTeacher && uploadedTeacherIdCardName && (
               <View style={styles.verifiedDocChip}>
                 <MaterialIcons name="attachment" size={13} color="#15803D" />
@@ -203,27 +238,7 @@ export const DocumentVerificationScreen: React.FC = () => {
           </View>
         )}
 
-        {/* Institutional Verification checklist */}
-        <View style={styles.checklist}>
-          <View style={styles.checkItem}>
-            <MaterialIcons name="verified" size={18} color={Colors.emeraldCheck} />
-            <Text style={styles.checkText}>
-              {isTeacher ? 'Active GGU Faculty Registrar Record Confirmed' : 'Active GGU Registrar Record Found'}
-            </Text>
-          </View>
-          <View style={styles.checkItem}>
-            <MaterialIcons name="verified" size={18} color={Colors.emeraldCheck} />
-            <Text style={styles.checkText}>
-              {isTeacher ? 'Teaching Workload & Timetable Auto-Mapped' : 'Department Roster Affiliation Confirmed'}
-            </Text>
-          </View>
-          <View style={styles.checkItem}>
-            <MaterialIcons name="verified" size={18} color={Colors.emeraldCheck} />
-            <Text style={styles.checkText}>
-              {isTeacher ? 'Class Attendance Broadcast & GPS Engine Ready' : 'Campus Geofence Access Authorized'}
-            </Text>
-          </View>
-        </View>
+
 
         {errorMessage && (
           <View style={styles.errorBox}>

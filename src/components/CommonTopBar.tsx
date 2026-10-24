@@ -17,7 +17,7 @@ export const CommonTopBar: React.FC<CommonTopBarProps> = ({
   onBack,
   showRoleBadge = true,
 }) => {
-  const { currentRole, switchRole, goBack, setIsProfileSheetOpen } = useAttendance();
+  const { currentRole, goBack, setIsProfileSheetOpen } = useAttendance();
   const isTeacher = currentRole === 'TEACHER';
   const brandColor = isTeacher ? Colors.teacherOrange : Colors.studentTeal;
 
@@ -38,11 +38,7 @@ export const CommonTopBar: React.FC<CommonTopBarProps> = ({
 
       <View style={styles.rightRow}>
         {showRoleBadge && (
-          <TouchableOpacity
-            style={[styles.roleBadge, { borderColor: brandColor }]}
-            onPress={switchRole}
-            activeOpacity={0.8}
-          >
+          <View style={[styles.roleBadge, { borderColor: brandColor }]}>
             <MaterialIcons
               name={isTeacher ? 'school' : 'person'}
               size={14}
@@ -51,7 +47,7 @@ export const CommonTopBar: React.FC<CommonTopBarProps> = ({
             <Text style={[styles.roleBadgeText, { color: brandColor }]}>
               {currentRole}
             </Text>
-          </TouchableOpacity>
+          </View>
         )}
 
         <TouchableOpacity

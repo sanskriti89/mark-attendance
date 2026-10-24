@@ -1,10 +1,11 @@
-import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, Platform, ActivityIndicator } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors } from '../theme/colors';
 import { useAttendance } from '../context/AttendanceContext';
 import { CommonTopBar } from '../components/CommonTopBar';
 import { NumericKeypad } from '../components/NumericKeypad';
+import { api } from '../services/api';
 
 export const TeacherBroadcastSetupScreen: React.FC = () => {
   const {
@@ -17,7 +18,59 @@ export const TeacherBroadcastSetupScreen: React.FC = () => {
     activeSubjectName,
     activeClassroom,
     teacherRegName,
+    teacherRegFacultyId,
+    teacherDepartment,
+    startBroadcastTimer,
+    setBroadcastPin,
+    generateRandomPin,
+    setActiveSessionId,
   } = useAttendance();
+
+  const [isStarting, setIsStarting] = useState(false);
+
+  React.useEffect(() => {
+    // Automatically generate a fresh random 2-digit PIN every time broadcast setup is opened
+    const randPin = generateRandomPin ? generateRandomPin() : Math.floor(10 + Math.random() * 90).toString();
+    setBroadcastPin(randPin);
+  }, []);
+
+  const handleStartBroadcast = async () => {
+    const pin =
+      broadcastPin && broadcastPin.trim().length === 2
+        ? broadcastPin.trim()
+        : generateRandomPin
+        ? generateRandomPin()
+        : Math.floor(10 + Math.random() * 90).toString();
+    setBroadcastPin(pin);
+
+    setIsStarting(true);
+    try {
+      const payload = {
+        courseCode: activeSubjectCode || 'CIUCMJT2',
+        courseName: activeSubjectName || 'Operating Systems',
+        classroom: activeClassroom || 'CSIT Room FB',
+        department: teacherDepartment || 'CSIT',
+        broadcastPin: pin,
+        durationSeconds: 900,
+        totalTarget: 72,
+        teacherFacultyId: teacherRegFacultyId || 'EMP/2026/8042',
+        teacherName: teacherRegName || 'Dr. Rajesh Kumar Singh',
+      };
+
+      const res = await api.startBroadcast(payload);
+      if (res && res.success && res.session) {
+        setActiveSessionId(res.session._id);
+      }
+      startBroadcastTimer();
+      navigateTo('TEACHER_BROADCAST_ACTIVE');
+    } catch (err: any) {
+      console.warn('Broadcast start warning:', err);
+      startBroadcastTimer();
+      navigateTo('TEACHER_BROADCAST_ACTIVE');
+    } finally {
+      setIsStarting(false);
+    }
+  };
 
   return (
     <View style={styles.container}>
@@ -65,6 +118,35 @@ export const TeacherBroadcastSetupScreen: React.FC = () => {
           </View>
         </View>
 
+        {/* Quick Shuffle Random PIN */}
+        <TouchableOpacity
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'center',
+            alignSelf: 'center',
+            gap: 6,
+            paddingVertical: 7,
+            paddingHorizontal: 16,
+            backgroundColor: '#FFF7ED',
+            borderRadius: 20,
+            borderWidth: 1,
+            borderColor: '#FDBA74',
+            marginTop: -6,
+            marginBottom: 14,
+          }}
+          activeOpacity={0.7}
+          onPress={() => {
+            const rand = generateRandomPin ? generateRandomPin() : Math.floor(10 + Math.random() * 90).toString();
+            setBroadcastPin(rand);
+          }}
+        >
+          <MaterialIcons name="shuffle" size={16} color={Colors.teacherOrange} />
+          <Text style={{ fontSize: 12, fontWeight: '700', color: Colors.teacherOrangeDark }}>
+            Generate New Random PIN
+          </Text>
+        </TouchableOpacity>
+
         {/* Numeric Keypad */}
         <NumericKeypad
           onDigitClick={appendBroadcastPinDigit}
@@ -75,21 +157,19 @@ export const TeacherBroadcastSetupScreen: React.FC = () => {
         {/* Actions */}
         <View style={styles.actionColumn}>
           <TouchableOpacity
-            style={styles.broadcastButton}
-            onPress={() => navigateTo('TEACHER_BROADCAST_ACTIVE')}
+            style={[styles.broadcastButton, isStarting && { opacity: 0.8 }]}
+            onPress={handleStartBroadcast}
+            disabled={isStarting}
             activeOpacity={0.8}
           >
-            <MaterialIcons name="sensors" size={20} color={Colors.white} />
-            <Text style={styles.broadcastButtonText}>COLLECT ATTENDANCE</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.reportButton}
-            onPress={() => navigateTo('TEACHER_REPORT')}
-            activeOpacity={0.8}
-          >
-            <MaterialIcons name="analytics" size={18} color={Colors.slate600} />
-            <Text style={styles.reportButtonText}>View Attendance Reports</Text>
+            {isStarting ? (
+              <ActivityIndicator size="small" color={Colors.white} />
+            ) : (
+              <MaterialIcons name="sensors" size={20} color={Colors.white} />
+            )}
+            <Text style={styles.broadcastButtonText}>
+              {isStarting ? 'STARTING TRANSMITTER...' : 'COLLECT ATTENDANCE'}
+            </Text>
           </TouchableOpacity>
         </View>
       </ScrollView>

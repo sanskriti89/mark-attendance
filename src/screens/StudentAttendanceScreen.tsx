@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,6 +6,8 @@ import {
   StyleSheet,
   ScrollView,
   Modal,
+  Animated,
+  Easing,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors } from '../theme/colors';
@@ -25,12 +27,75 @@ export const StudentAttendanceScreen: React.FC = () => {
     studentAttendanceMarked,
     studentAttendanceMessage,
     campusGeofence,
-    broadcastPin,
     activeSubjectCode,
     activeSubjectName,
     activeClassroom,
     navigateTo,
   } = useAttendance();
+
+  // Radar pulsing concentric circles animation
+  const radarPulse = useRef(new Animated.Value(1)).current;
+  const radarGlow = useRef(new Animated.Value(0.4)).current;
+
+  // Success dialog spring scale
+  const successScale = useRef(new Animated.Value(0.85)).current;
+
+  useEffect(() => {
+    // Continuous subtle radar beacon pulse
+    const pulseAnim = Animated.loop(
+      Animated.sequence([
+        Animated.parallel([
+          Animated.timing(radarPulse, {
+            toValue: 1.05,
+            duration: 1200,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+          Animated.timing(radarGlow, {
+            toValue: 0.85,
+            duration: 1200,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+        ]),
+        Animated.parallel([
+          Animated.timing(radarPulse, {
+            toValue: 1,
+            duration: 1200,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+          Animated.timing(radarGlow, {
+            toValue: 0.4,
+            duration: 1200,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+        ]),
+      ])
+    );
+    pulseAnim.start();
+
+    return () => pulseAnim.stop();
+  }, []);
+
+  useEffect(() => {
+    if (studentAttendanceMarked) {
+      successScale.setValue(0.8);
+      Animated.spring(successScale, {
+        toValue: 1,
+        friction: 6,
+        tension: 80,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [studentAttendanceMarked]);
+
+  useEffect(() => {
+    // Ensure student screen always starts completely clean with empty PIN entry
+    clearStudentPin();
+    resetStudentAttendance();
+  }, []);
 
   const d1 = studentEnteredPin[0] || '-';
   const d2 = studentEnteredPin[1] || '-';
@@ -72,11 +137,16 @@ export const StudentAttendanceScreen: React.FC = () => {
 
         {/* Concentric Circle Target PIN Entry */}
         <View style={styles.targetWrapper}>
-          <View style={styles.outerTargetRing}>
+          <Animated.View
+            style={[
+              styles.outerTargetRing,
+              { transform: [{ scale: radarPulse }] },
+            ]}
+          >
             <View style={styles.innerTargetRing}>
               <Text style={styles.pinTargetHeader}>ENTER 2-DIGIT PIN</Text>
               <Text style={styles.pinHint}>
-                Announced verbally by your teacher (Hint: {broadcastPin})
+                Announced verbally or displayed in classroom by your teacher
               </Text>
 
               {/* Two Digit Underline Display */}
@@ -99,7 +169,7 @@ export const StudentAttendanceScreen: React.FC = () => {
                 </View>
               </View>
             </View>
-          </View>
+          </Animated.View>
 
           {/* Feedback error or alert */}
           {studentAttendanceMessage && !studentAttendanceMarked && (
@@ -117,7 +187,7 @@ export const StudentAttendanceScreen: React.FC = () => {
           onClearClick={clearStudentPin}
         />
 
-        {/* Slide to Confirm Attendance */}
+        {/* Confirm Attendance (Slide Only) */}
         <View style={styles.slideWrapper}>
           <SlideToConfirmButton
             title="SLIDE TO MARK ATTENDANCE"
@@ -134,7 +204,12 @@ export const StudentAttendanceScreen: React.FC = () => {
       {/* Success Dialog Modal */}
       <Modal visible={studentAttendanceMarked} transparent animationType="fade">
         <View style={styles.modalOverlay}>
-          <View style={styles.successDialog}>
+          <Animated.View
+            style={[
+              styles.successDialog,
+              { transform: [{ scale: successScale }] },
+            ]}
+          >
             <View style={styles.successIconCircle}>
               <MaterialIcons name="check" size={38} color={Colors.white} />
             </View>
@@ -171,7 +246,7 @@ export const StudentAttendanceScreen: React.FC = () => {
             >
               <Text style={styles.doneBtnText}>Back to Dashboard</Text>
             </TouchableOpacity>
-          </View>
+          </Animated.View>
         </View>
       </Modal>
     </View>

@@ -71,8 +71,10 @@ export interface TeacherClassSession {
 }
 
 export interface StudentAttendanceRecord {
+  id?: string;
   sNo: string;
   studentName: string;
+  studentEnrollment?: string;
   dept: string;
   courseType: string;
   isPresent: boolean;

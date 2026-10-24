@@ -1,7 +1,12 @@
 import { Request, Response, NextFunction } from 'express';
+import mongoose from 'mongoose';
 import jwt from 'jsonwebtoken';
 import { User, IUser } from '../models/User.js';
+import { Schedule } from '../models/Schedule.js';
+import { Otp } from '../models/Otp.js';
+import { DeviceBinding } from '../models/DeviceBinding.js';
 import { AuthRequest } from '../middlewares/authMiddleware.js';
+import { sendOtpEmail } from '../utils/emailService.js';
 
 const generateToken = (user: IUser): string => {
   const secret = process.env.JWT_SECRET || 'ggu_attendiq_jwt_secret_token_secure_key_2026';
@@ -19,6 +24,19 @@ const generateToken = (user: IUser): string => {
     secret,
     { expiresIn: expiresIn as any }
   );
+};
+
+const getTodayISTString = (): { dateStr: string; midnightExpiry: Date } => {
+  const now = new Date();
+  const istDateString = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(now);
+
+  const midnightIST = new Date(`${istDateString}T23:59:59.999+05:30`);
+  return { dateStr: istDateString, midnightExpiry: midnightIST };
 };
 
 // Register Student
@@ -108,6 +126,8 @@ export const registerTeacher = async (
       designation,
       phone,
       officeRoom,
+      coursesTaught,
+      schedules,
     } = req.body;
 
     if (!name || !facultyId || !email || !password || !department) {
@@ -129,6 +149,7 @@ export const registerTeacher = async (
       if (designation) teacher.designation = designation;
       if (phone) teacher.phone = phone;
       if (officeRoom) teacher.officeRoom = officeRoom;
+      if (coursesTaught) teacher.coursesTaught = coursesTaught;
       await teacher.save();
     } else {
       teacher = await User.create({
@@ -141,7 +162,32 @@ export const registerTeacher = async (
         designation: designation || 'Assistant Professor',
         phone: phone || '',
         officeRoom: officeRoom || '',
+        coursesTaught: coursesTaught || [],
       });
+    }
+
+    if (Array.isArray(schedules) && schedules.length > 0) {
+      const cleanFacId = facultyId.toUpperCase();
+      await Schedule.deleteMany({
+        targetRole: 'TEACHER',
+        targetId: { $in: [cleanFacId, facultyId, `GGV/${cleanFacId}`] },
+      });
+      const formatted = schedules.map((s: any) => ({
+        targetRole: 'TEACHER',
+        targetId: cleanFacId,
+        courseCode: s.courseCode,
+        courseName: s.courseName,
+        timeSlot: s.timeSlot || '10:00 AM - 11:00 AM',
+        dayOfWeek: s.dayOfWeek || 'Today',
+        classroom: s.classroom || 'CSIT Room FB',
+        teacherName: name,
+        department: department,
+        courseType: s.courseType || 'Major',
+        credits: s.credits || 3,
+        isOngoing: !!s.isOngoing,
+        isAttendanceActive: !!s.isAttendanceActive,
+      }));
+      await Schedule.insertMany(formatted);
     }
 
     const token = generateToken(teacher);
@@ -174,7 +220,7 @@ export const login = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const { identifier, password, role } = req.body;
+    const { identifier, password, role, deviceId } = req.body;
 
     if (!identifier || !password) {
       res.status(400).json({
@@ -184,19 +230,31 @@ export const login = async (
       return;
     }
 
+    if (mongoose.connection.readyState !== 1) {
+      res.status(503).json({
+        success: false,
+        message: 'Database is connecting. Please try again in a few moments.',
+      });
+      return;
+    }
+
+    const trimmedId = String(identifier).trim();
+
     const query: any = {
       $or: [
-        { email: identifier.toLowerCase() },
-        { enrollmentNo: identifier.toUpperCase() },
-        { facultyId: identifier.toUpperCase() },
+        { email: trimmedId.toLowerCase() },
+        { enrollmentNo: trimmedId.toUpperCase() },
+        { facultyId: trimmedId.toUpperCase() },
+        { enrollmentNo: trimmedId },
+        { facultyId: trimmedId },
       ],
     };
 
     if (role) {
-      query.role = role.toUpperCase();
+      query.role = String(role).toUpperCase();
     }
 
-    const user = await User.findOne(query).select('+password');
+    const user = await User.findOne(query).select('+password').maxTimeMS(12000);
 
     if (!user) {
       res.status(401).json({
@@ -213,6 +271,67 @@ export const login = async (
         message: 'Invalid credentials. Incorrect password.',
       });
       return;
+    }
+
+    // Single Device Binding for Students (Prevents 2 students logging in from same device today)
+    if (user.role === 'STUDENT' && deviceId) {
+      const cleanDeviceId = String(deviceId).trim();
+      if (cleanDeviceId) {
+        const { dateStr, midnightExpiry } = getTodayISTString();
+        const existingBinding = await DeviceBinding.findOne({
+          deviceId: cleanDeviceId,
+          loginDate: dateStr,
+        });
+
+        if (existingBinding) {
+          const isSameStudent =
+            existingBinding.boundUserId.toString() === user._id.toString() ||
+            existingBinding.boundEnrollmentNo.toUpperCase() === (user.enrollmentNo || '').toUpperCase();
+
+          if (!isSameStudent) {
+            res.status(403).json({
+              success: false,
+              isDeviceLocked: true,
+              boundEnrollmentNo: existingBinding.boundEnrollmentNo,
+              boundUserName: existingBinding.boundUserName,
+              message: `New ID cannot be logged in from this device today! Proxy attendance prevent karne ke liye ek device se 1 din me sirf ek student login ho sakta hai. Yeh device aaj pehle se ${existingBinding.boundUserName} (${existingBinding.boundEnrollmentNo}) ke account se registered hai. Midnight (12:00 AM) ke baad reset hoga.`,
+            });
+            return;
+          }
+        } else {
+          try {
+            await DeviceBinding.create({
+              deviceId: cleanDeviceId,
+              boundUserId: user._id,
+              boundEnrollmentNo: user.enrollmentNo || trimmedId,
+              boundUserName: user.name,
+              loginDate: dateStr,
+              expiresAt: midnightExpiry,
+            });
+          } catch (bindErr: any) {
+            if (bindErr.code === 11000) {
+              const raceBinding = await DeviceBinding.findOne({
+                deviceId: cleanDeviceId,
+                loginDate: dateStr,
+              });
+              if (
+                raceBinding &&
+                raceBinding.boundUserId.toString() !== user._id.toString() &&
+                raceBinding.boundEnrollmentNo.toUpperCase() !== (user.enrollmentNo || '').toUpperCase()
+              ) {
+                res.status(403).json({
+                  success: false,
+                  isDeviceLocked: true,
+                  boundEnrollmentNo: raceBinding.boundEnrollmentNo,
+                  boundUserName: raceBinding.boundUserName,
+                  message: `New ID cannot be logged in from this device today! Proxy attendance prevent karne ke liye ek device se 1 din me sirf ek student login ho sakta hai. Yeh device aaj pehle se ${raceBinding.boundUserName} (${raceBinding.boundEnrollmentNo}) ke account se registered hai. Midnight (12:00 AM) ke baad reset hoga.`,
+                });
+                return;
+              }
+            }
+          }
+        }
+      }
     }
 
     const token = generateToken(user);
@@ -233,6 +352,213 @@ export const login = async (
         courseLevel: user.courseLevel,
         enrolledCourses: user.enrolledCourses || [],
         coursesTaught: user.coursesTaught || [],
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Helper to mask emails for secure display (e.g., ku***@gmail.com)
+const maskEmail = (email: string) => {
+  const parts = email.split('@');
+  if (parts.length !== 2) return email;
+  const name = parts[0];
+  const domain = parts[1];
+  const visible = name.slice(0, 2);
+  return `${visible}***@${domain}`;
+};
+
+// Send OTP for Password Reset
+export const sendResetOtp = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { identifier, email, role } = req.body;
+
+    if (!identifier || !email) {
+      res.status(400).json({
+        success: false,
+        message: 'Both your ID (Enrollment No / Faculty ID) and registered GGU Email are required.',
+      });
+      return;
+    }
+
+    const trimmedId = String(identifier).trim();
+    const trimmedEmail = String(email).trim().toLowerCase();
+
+    const query: any = {
+      $or: [
+        { email: trimmedId.toLowerCase() },
+        { enrollmentNo: trimmedId.toUpperCase() },
+        { facultyId: trimmedId.toUpperCase() },
+        { enrollmentNo: trimmedId },
+        { facultyId: trimmedId },
+      ],
+    };
+
+    if (role) {
+      query.role = String(role).toUpperCase();
+    }
+
+    const user = await User.findOne(query);
+
+    if (!user) {
+      res.status(404).json({
+        success: false,
+        message: `Account not found with identifier "${trimmedId}". Please verify your ID.`,
+      });
+      return;
+    }
+
+    // CRITICAL SECURITY CHECK: Authenticate that provided email matches registered account email
+    if (user.email.toLowerCase().trim() !== trimmedEmail) {
+      res.status(400).json({
+        success: false,
+        message: 'Security Verification Failed: The provided email does not match registered university records for this ID.',
+      });
+      return;
+    }
+
+    // Generate 6-digit random verification OTP
+    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes expiry
+
+    // Clear any previous OTPs for this user
+    await Otp.deleteMany({
+      $or: [
+        { identifier: trimmedId },
+        { email: trimmedEmail },
+      ],
+    });
+
+    await Otp.create({
+      identifier: trimmedId,
+      email: trimmedEmail,
+      otp: otpCode,
+      expiresAt,
+    });
+
+    console.log(`[AUTH SECURITY] 6-Digit Password Reset OTP for ${user.email} (${trimmedId}): ${otpCode}`);
+
+    // Send actual OTP email to the registered email address
+    await sendOtpEmail(user.email, user.name, otpCode);
+
+    res.status(200).json({
+      success: true,
+      message: `A 6-digit verification code has been dispatched to your registered email (${maskEmail(user.email)}). Please check your inbox.`,
+      maskedEmail: maskEmail(user.email),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Reset Password with OTP Authentication
+export const resetPassword = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { identifier, email, otp, newPassword, role } = req.body;
+
+    if (!identifier || !email || !otp || !newPassword) {
+      res.status(400).json({
+        success: false,
+        message: 'ID, registered email, 6-digit OTP code, and new password are all required.',
+      });
+      return;
+    }
+
+    const trimmedPassword = String(newPassword).trim();
+    if (trimmedPassword.length < 4) {
+      res.status(400).json({
+        success: false,
+        message: 'New password must be at least 4 characters long.',
+      });
+      return;
+    }
+
+    const trimmedId = String(identifier).trim();
+    const trimmedEmail = String(email).trim().toLowerCase();
+    const trimmedOtp = String(otp).trim();
+
+    const query: any = {
+      $or: [
+        { email: trimmedId.toLowerCase() },
+        { enrollmentNo: trimmedId.toUpperCase() },
+        { facultyId: trimmedId.toUpperCase() },
+        { enrollmentNo: trimmedId },
+        { facultyId: trimmedId },
+      ],
+    };
+
+    if (role) {
+      query.role = String(role).toUpperCase();
+    }
+
+    const user = await User.findOne(query).select('+password');
+
+    if (!user) {
+      res.status(404).json({
+        success: false,
+        message: `Account not found with identifier "${trimmedId}".`,
+      });
+      return;
+    }
+
+    // Security check: email matches registered record
+    if (user.email.toLowerCase().trim() !== trimmedEmail) {
+      res.status(400).json({
+        success: false,
+        message: 'Security Verification Failed: The provided email does not match registered university records.',
+      });
+      return;
+    }
+
+    // Security check: Verify OTP
+    const validOtp = await Otp.findOne({
+      $or: [
+        { identifier: trimmedId },
+        { email: trimmedEmail },
+      ],
+      otp: trimmedOtp,
+      expiresAt: { $gt: new Date() },
+    });
+
+    if (!validOtp) {
+      res.status(400).json({
+        success: false,
+        message: 'Invalid or expired 6-digit verification code. Please request a new code.',
+      });
+      return;
+    }
+
+    // Assigning new password triggers User pre('save') bcrypt hashing
+    user.password = trimmedPassword;
+    await user.save();
+
+    // Consume the OTP so it cannot be reused
+    await Otp.deleteMany({
+      $or: [
+        { identifier: trimmedId },
+        { email: trimmedEmail },
+      ],
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Password has been authenticated and successfully updated! You can now log in.',
+      user: {
+        id: user._id,
+        role: user.role,
+        name: user.name,
+        email: user.email,
+        enrollmentNo: user.enrollmentNo,
+        facultyId: user.facultyId,
       },
     });
   } catch (error) {
@@ -261,6 +587,53 @@ export const getCurrentUser = async (
     res.status(200).json({
       success: true,
       user,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Lookup user by Enrollment No / Faculty ID / Email (public profile info)
+export const lookupUser = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const identifier = String(req.query.identifier || '').trim();
+    if (!identifier) {
+      res.status(400).json({ success: false, message: 'Identifier query parameter is required.' });
+      return;
+    }
+
+    const user = await User.findOne({
+      $or: [
+        { enrollmentNo: identifier.toUpperCase() },
+        { enrollmentNo: identifier },
+        { facultyId: identifier.toUpperCase() },
+        { facultyId: identifier },
+        { email: identifier.toLowerCase() },
+      ],
+    }).select('-password');
+
+    if (!user) {
+      res.status(404).json({ success: false, message: 'User not found' });
+      return;
+    }
+
+    res.status(200).json({
+      success: true,
+      user: {
+        id: user._id,
+        role: user.role,
+        name: user.name,
+        email: user.email,
+        enrollmentNo: user.enrollmentNo,
+        facultyId: user.facultyId,
+        department: user.department,
+        designation: user.designation,
+        courseLevel: user.courseLevel,
+      },
     });
   } catch (error) {
     next(error);

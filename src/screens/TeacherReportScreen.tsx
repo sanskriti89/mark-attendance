@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -6,14 +6,18 @@ import {
   TouchableOpacity,
   ScrollView,
   StyleSheet,
+  ActivityIndicator,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors } from '../theme/colors';
 import { useAttendance } from '../context/AttendanceContext';
 import { CommonTopBar } from '../components/CommonTopBar';
+import { api } from '../services/api';
 
 export const TeacherReportScreen: React.FC = () => {
   const {
+    attendanceRecords,
+    setAttendanceRecords,
     filteredRecords,
     toggleRecordAttendance,
     searchQuery,
@@ -26,17 +30,179 @@ export const TeacherReportScreen: React.FC = () => {
     setIsExportModalOpen,
     userNotification,
     setUserNotification,
+    activeSubjectCode,
+    activeSubjectName,
+    activeSessionId,
+    teacherRegFacultyId,
+    teacherRegName,
+    activeClassroom,
+    teacherDepartment,
+    teacherRegEmail,
+    navigateTo,
   } = useAttendance();
+
+  const availableCourses = [
+    { code: 'CIUCMJT2', name: 'Operating Systems' },
+    { code: 'CIUCMJT1', name: 'Relational Database Management System' },
+    { code: 'SECC13', name: 'DBMS (Database Management Systems)' },
+    { code: 'VOCCILO03', name: 'Lab Based on Python' },
+    { code: 'CAUCMJT2', name: 'Principals of Operating Systems' },
+    { code: 'HIUCAET1', name: 'Hindi Bhasha Aur Sahitya' },
+  ];
+
+  const [selectedCourseCode, setSelectedCourseCode] = useState(activeSubjectCode || 'CIUCMJT2');
+  const [isLoadingRecords, setIsLoadingRecords] = useState(false);
+  const [isSavingReport, setIsSavingReport] = useState(false);
+  const [reportSavedSuccess, setReportSavedSuccess] = useState(false);
+  const [isSendingDirectEmail, setIsSendingDirectEmail] = useState(false);
+
+  const selectedCourseObj = availableCourses.find((c) => c.code === selectedCourseCode) || {
+    code: selectedCourseCode,
+    name: activeSubjectName || 'University Lecture Course',
+  };
+
+  const fetchReports = useCallback(async () => {
+    setIsLoadingRecords(true);
+    try {
+      const targetCourse = (selectedCourseCode || activeSubjectCode || 'CIUCMJT2').trim().toUpperCase();
+      let recs: any[] = [];
+
+      // Query course reports strictly for this courseCode
+      const repRes = await api.getReports({ courseCode: targetCourse });
+      if (repRes && repRes.success && Array.isArray(repRes.records)) {
+        recs = repRes.records;
+      } else if (activeSessionId) {
+        const sessionRes = await api.getSessionAttendance(activeSessionId);
+        if (sessionRes && sessionRes.success && Array.isArray(sessionRes.records)) {
+          recs = sessionRes.records.filter((r: any) => (r.courseCode || '').toUpperCase() === targetCourse);
+        }
+      }
+
+      if (recs.length > 0) {
+        // De-duplicate by studentEnrollment/name so each student has 1 row with their latest status
+        const seen = new Set<string>();
+        const uniqueRecs: any[] = [];
+        for (const r of recs) {
+          const key = (r.studentEnrollment || r.studentName || '').toUpperCase().trim();
+          if (!seen.has(key)) {
+            seen.add(key);
+            uniqueRecs.push(r);
+          }
+        }
+
+        const mapped = uniqueRecs.map((r: any, idx: number) => ({
+          id: r._id || r.id,
+          sNo: String(idx + 1).padStart(2, '0'),
+          studentName: r.studentName || r.studentEnrollment || 'Student',
+          studentEnrollment: r.studentEnrollment || '',
+          dept: r.department || 'CSIT',
+          courseType: r.courseType || 'Major',
+          isPresent: r.isPresent ?? false,
+          checkInTime: r.markedAt ? new Date(r.markedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : (r.isPresent ? 'Verified' : 'Absent'),
+          verificationMethod: r.verifiedVia || (r.isPresent ? 'GGU GPS + PIN' : 'Unverified'),
+        }));
+        setAttendanceRecords(mapped);
+      } else {
+        setAttendanceRecords([]);
+      }
+    } catch (err) {
+      console.warn('Error fetching reports:', err);
+    } finally {
+      setIsLoadingRecords(false);
+    }
+  }, [activeSessionId, activeSubjectCode, selectedCourseCode]);
+
+  const handleSaveReportToDatabase = async () => {
+    setIsSavingReport(true);
+    try {
+      const payload = {
+        sessionId: activeSessionId || undefined,
+        courseCode: selectedCourseObj.code,
+        courseName: selectedCourseObj.name,
+        teacherFacultyId: teacherRegFacultyId || 'EMP/2026/8042',
+        teacherName: teacherRegName || 'Dr. Rajesh Kumar Singh',
+        teacherEmail: teacherRegEmail || undefined,
+        classroom: activeClassroom || 'CSIT Room FB',
+        department: teacherDepartment || 'CSIT',
+        totalPresent: presentCount,
+        totalAbsent: filteredRecords.length - presentCount,
+        totalEnrolled: filteredRecords.length,
+        physicalHeadcount: physicalHeadcount || 0,
+        hasDiscrepancy,
+        sendEmail: true,
+        records: filteredRecords.map((r) => ({
+          id: r.id,
+          sNo: r.sNo,
+          studentName: r.studentName,
+          studentEnrollment: r.studentEnrollment || r.sNo,
+          department: r.dept,
+          courseType: r.courseType,
+          isPresent: r.isPresent,
+          checkInTime: r.checkInTime,
+          verificationMethod: r.verificationMethod,
+        })),
+      };
+
+      const res = await api.saveAttendanceReport(payload);
+      if (res && res.success) {
+        setReportSavedSuccess(true);
+        const emailMsg = res.emailSent ? ` & emailed to ${res.emailSentTo || teacherRegEmail}` : '';
+        setUserNotification(`✅ Official attendance report saved & archived${emailMsg}!`);
+        setTimeout(() => setReportSavedSuccess(false), 5000);
+      }
+    } catch (e: any) {
+      console.warn('Save report error:', e);
+      setUserNotification('❌ Error saving attendance report: ' + e.message);
+    } finally {
+      setIsSavingReport(false);
+    }
+  };
+
+  const handleDirectEmailReport = async () => {
+    setIsSendingDirectEmail(true);
+    try {
+      const res = await api.emailAttendanceReport({
+        courseCode: selectedCourseObj.code,
+        sessionId: activeSessionId || undefined,
+        email: teacherRegEmail || undefined,
+        teacherName: teacherRegName || 'Dr. Rajesh Kumar Singh',
+        classroom: activeClassroom || 'CSIT Room FB',
+        records: filteredRecords.map((r) => ({
+          sNo: r.sNo,
+          studentName: r.studentName,
+          studentEnrollment: r.studentEnrollment || r.sNo,
+          department: r.dept,
+          courseType: r.courseType,
+          isPresent: r.isPresent,
+          checkInTime: r.checkInTime,
+          verificationMethod: r.verificationMethod,
+        })),
+      });
+
+      if (res && res.success) {
+        setUserNotification(`📧 Attendance report successfully emailed to ${res.emailSentTo || teacherRegEmail || 'faculty email'}!`);
+      } else {
+        setUserNotification(`⚠️ ${res?.message || 'Could not send report email.'}`);
+      }
+    } catch (err: any) {
+      setUserNotification(`❌ Email failed: ${err.message || 'Network error'}`);
+    } finally {
+      setIsSendingDirectEmail(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchReports();
+  }, [fetchReports]);
 
   const presentCount = filteredRecords.filter((r) => r.isPresent).length;
   const hasDiscrepancy = presentCount > physicalHeadcount;
 
   const deptList = ['All', 'CSIT', 'CSE', 'ECE', 'IT'];
-  const categoryList = ['All', 'Major', 'Minor', 'SEC', 'VAC', 'AEC'];
 
   return (
     <View style={styles.container}>
-      <CommonTopBar title="Attendance Report" />
+      <CommonTopBar title="Attendance Report" onBack={() => navigateTo('TEACHER_DASHBOARD')} />
 
       {/* Notification Toast */}
       {userNotification && (
@@ -50,20 +216,76 @@ export const TeacherReportScreen: React.FC = () => {
       )}
 
       <ScrollView contentContainerStyle={styles.content}>
+
         {/* Header Summary */}
         <View style={styles.summaryCard}>
-          <View style={styles.summaryTopRow}>
-            <View>
-              <Text style={styles.courseCode}>CS401</Text>
-              <Text style={styles.courseTitle}>Database Management Systems</Text>
+          <View style={styles.courseHeader}>
+            <View style={{ flex: 1, marginRight: 8 }}>
+              <Text style={styles.courseCode}>{selectedCourseObj.code}</Text>
+              <Text style={styles.courseTitle}>{selectedCourseObj.name}</Text>
             </View>
             <TouchableOpacity
-              style={styles.exportBtn}
+              style={styles.refreshIconBtn}
+              onPress={fetchReports}
+              disabled={isLoadingRecords}
+              activeOpacity={0.7}
+            >
+              {isLoadingRecords ? (
+                <ActivityIndicator size="small" color={Colors.teacherOrange} />
+              ) : (
+                <MaterialIcons name="refresh" size={20} color={Colors.slate600} />
+              )}
+            </TouchableOpacity>
+          </View>
+
+          {/* Action Buttons Row */}
+          <View style={styles.actionButtonsRow}>
+            <TouchableOpacity
+              style={[
+                styles.actionBtn,
+                reportSavedSuccess ? styles.actionBtnSaved : styles.actionBtnPrimary,
+              ]}
+              onPress={handleSaveReportToDatabase}
+              disabled={isSavingReport}
+              activeOpacity={0.8}
+            >
+              {isSavingReport ? (
+                <ActivityIndicator size="small" color={Colors.white} />
+              ) : (
+                <MaterialIcons
+                  name={reportSavedSuccess ? 'cloud-done' : 'cloud-upload'}
+                  size={16}
+                  color={Colors.white}
+                />
+              )}
+              <Text style={styles.actionBtnPrimaryText}>
+                {isSavingReport ? 'Saving...' : reportSavedSuccess ? 'Saved' : 'Save DB'}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.actionBtn, styles.actionBtnSecondary]}
               onPress={() => setIsExportModalOpen(true)}
               activeOpacity={0.8}
             >
-              <MaterialIcons name="file-download" size={18} color={Colors.white} />
-              <Text style={styles.exportBtnText}>Export CSV</Text>
+              <MaterialIcons name="file-download" size={16} color={Colors.slate800} />
+              <Text style={styles.actionBtnSecondaryText}>Excel</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.actionBtn, styles.actionBtnSecondary]}
+              onPress={handleDirectEmailReport}
+              disabled={isSendingDirectEmail}
+              activeOpacity={0.8}
+            >
+              {isSendingDirectEmail ? (
+                <ActivityIndicator size="small" color={Colors.slate800} />
+              ) : (
+                <MaterialIcons name="mail-outline" size={16} color={Colors.slate800} />
+              )}
+              <Text style={styles.actionBtnSecondaryText}>
+                {isSendingDirectEmail ? 'Sending...' : 'Email'}
+              </Text>
             </TouchableOpacity>
           </View>
 
@@ -87,16 +309,7 @@ export const TeacherReportScreen: React.FC = () => {
             </View>
           </View>
 
-          {/* Discrepancy Alert */}
-          {hasDiscrepancy && (
-            <View style={styles.discrepancyBox}>
-              <MaterialIcons name="warning" size={18} color={Colors.liveRed} />
-              <Text style={styles.discrepancyText}>
-                Audit Flag: {presentCount - physicalHeadcount} unverified digital
-                attendee(s) detected above physical headcount!
-              </Text>
-            </View>
-          )}
+
         </View>
 
         {/* Search Input */}
@@ -139,28 +352,6 @@ export const TeacherReportScreen: React.FC = () => {
           ))}
         </ScrollView>
 
-        {/* Filter Chips - Category */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipRow}>
-          {categoryList.map((cat) => (
-            <TouchableOpacity
-              key={cat}
-              style={[
-                styles.categoryChip,
-                selectedCategoryFilter === cat && styles.activeCategoryChip,
-              ]}
-              onPress={() => setSelectedCategoryFilter(cat)}
-            >
-              <Text
-                style={[
-                  styles.categoryChipText,
-                  selectedCategoryFilter === cat && styles.activeCategoryChipText,
-                ]}
-              >
-                {cat}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
 
         {/* Attendance List */}
         <View style={styles.rosterCard}>
@@ -168,7 +359,23 @@ export const TeacherReportScreen: React.FC = () => {
             ATTENDANCE ROSTER ({filteredRecords.length})
           </Text>
 
-          {filteredRecords.map((record) => (
+          {isLoadingRecords && filteredRecords.length === 0 ? (
+            <View style={{ alignItems: 'center', paddingVertical: 32, gap: 10 }}>
+              <ActivityIndicator size="large" color={Colors.teacherOrange} />
+              <Text style={{ fontSize: 14, fontWeight: '600', color: Colors.slate600 }}>
+                Loading verified attendance records from database...
+              </Text>
+            </View>
+          ) : filteredRecords.length === 0 ? (
+            <View style={{ alignItems: 'center', paddingVertical: 32, gap: 8 }}>
+              <MaterialIcons name="people-outline" size={36} color={Colors.slate400} />
+              <Text style={{ fontSize: 14, fontWeight: '700', color: Colors.slate700 }}>No Attendance Records Yet</Text>
+              <Text style={{ fontSize: 12, color: Colors.slate500, textAlign: 'center', maxWidth: 280 }}>
+                When students enter the broadcast PIN and mark attendance, verified check-in records will appear here.
+              </Text>
+            </View>
+          ) : (
+            filteredRecords.map((record) => (
             <View key={record.sNo} style={styles.recordItem}>
               <View style={styles.recordLeft}>
                 <View style={styles.sNoBadge}>
@@ -208,7 +415,7 @@ export const TeacherReportScreen: React.FC = () => {
                 </Text>
               </TouchableOpacity>
             </View>
-          ))}
+          )))}
         </View>
       </ScrollView>
     </View>
@@ -247,32 +454,66 @@ const styles = StyleSheet.create({
     borderColor: Colors.slate200,
     gap: 14,
   },
-  summaryTopRow: {
+  courseHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    alignItems: 'center',
   },
   courseCode: {
     fontSize: 12,
     fontWeight: '800',
     color: Colors.teacherOrange,
+    marginBottom: 2,
+    letterSpacing: 0.5,
   },
   courseTitle: {
     fontSize: 16,
     fontWeight: '800',
     color: Colors.slate900,
+    lineHeight: 22,
   },
-  exportBtn: {
+  refreshIconBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: Colors.slate200,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  actionButtonsRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  actionBtn: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    backgroundColor: Colors.teacherOrange,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 8,
+    justifyContent: 'center',
+    gap: 5,
+    paddingVertical: 9,
+    paddingHorizontal: 6,
+    borderRadius: 10,
   },
-  exportBtnText: {
+  actionBtnPrimary: {
+    backgroundColor: Colors.teacherOrange,
+  },
+  actionBtnSaved: {
+    backgroundColor: Colors.emeraldCheck,
+  },
+  actionBtnPrimaryText: {
     color: Colors.white,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  actionBtnSecondary: {
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: Colors.slate200,
+  },
+  actionBtnSecondaryText: {
+    color: Colors.slate800,
     fontSize: 12,
     fontWeight: '700',
   },

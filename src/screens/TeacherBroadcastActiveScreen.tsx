@@ -1,17 +1,20 @@
-import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Animated, Easing } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors } from '../theme/colors';
 import { useAttendance } from '../context/AttendanceContext';
 import { CommonTopBar } from '../components/CommonTopBar';
+import { api } from '../services/api';
 
 export const TeacherBroadcastActiveScreen: React.FC = () => {
   const {
     broadcastPin,
     broadcastSecondsLeft,
     currentAttendanceCount,
+    setCurrentAttendanceCount,
     totalAttendanceTarget,
     recentJoins,
+    setRecentJoins,
     physicalHeadcount,
     incrementPhysicalHeadcount,
     decrementPhysicalHeadcount,
@@ -20,28 +23,155 @@ export const TeacherBroadcastActiveScreen: React.FC = () => {
     navigateTo,
     stopBroadcastTimer,
     activeClassroom,
+    activeSessionId,
+    setActiveSessionId,
+    activeSubjectCode,
+    activeSubjectName,
+    teacherDepartment,
+    teacherRegFacultyId,
+    teacherRegName,
+    setBroadcastPin,
+    generateRandomPin,
   } = useAttendance();
+
+  const pulseDot = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseDot, {
+          toValue: 1.5,
+          duration: 800,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseDot, {
+          toValue: 1,
+          duration: 800,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, []);
+
+  // Ensure active broadcast session is live on backend
+  useEffect(() => {
+    let isMounted = true;
+    const ensureBroadcastActive = async () => {
+      try {
+        const check = await api.getActiveSession();
+        if (isMounted && (!check || !check.hasActiveSession || !check.session)) {
+          const pin =
+            broadcastPin && broadcastPin.length >= 2
+              ? broadcastPin
+              : generateRandomPin
+              ? generateRandomPin()
+              : Math.floor(10 + Math.random() * 90).toString();
+          const payload = {
+            courseCode: activeSubjectCode || 'CIUCMJT2',
+            courseName: activeSubjectName || 'Operating Systems',
+            classroom: activeClassroom || 'CSIT Room FB',
+            department: teacherDepartment || 'CSIT',
+            broadcastPin: pin,
+            durationSeconds: 900,
+            totalTarget: 72,
+            teacherFacultyId: teacherRegFacultyId || 'EMP/2026/8042',
+            teacherName: teacherRegName || 'Dr. Rajesh Kumar Singh',
+          };
+          const startRes = await api.startBroadcast(payload);
+          if (isMounted && startRes && startRes.success && startRes.session) {
+            setActiveSessionId(startRes.session._id);
+          }
+        } else if (isMounted && check && check.session) {
+          setActiveSessionId(check.session._id);
+          if (check.session.broadcastPin && check.session.broadcastPin !== broadcastPin) {
+            setBroadcastPin(check.session.broadcastPin);
+          }
+        }
+      } catch (err) {
+        console.warn('Auto ensure session error:', err);
+      }
+    };
+
+    ensureBroadcastActive();
+
+    // Poll for real-time verified student arrivals
+    const pollLiveAttendees = async () => {
+      try {
+        const res = await api.getActiveSession();
+        if (isMounted && res && res.success && res.session) {
+          if (res.session._id) {
+            setActiveSessionId(res.session._id);
+          }
+          if (typeof res.session.currentAttendanceCount === 'number') {
+            setCurrentAttendanceCount(res.session.currentAttendanceCount);
+          }
+          if (Array.isArray(res.session.recentJoins) && res.session.recentJoins.length > 0) {
+            setRecentJoins(res.session.recentJoins);
+          }
+          if (res.session.broadcastPin && res.session.broadcastPin !== broadcastPin) {
+            setBroadcastPin(res.session.broadcastPin);
+          }
+        }
+      } catch (e) {
+        // network polling fallback
+      }
+    };
+
+    pollLiveAttendees();
+    const interval = setInterval(pollLiveAttendees, 2500);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, []);
 
   const minutes = Math.floor(broadcastSecondsLeft / 60);
   const seconds = broadcastSecondsLeft % 60;
   const timerFormatted = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 
-  const progressPercent = Math.min(100, Math.round((currentAttendanceCount / totalAttendanceTarget) * 100));
+  const progressPercent = Math.min(100, Math.round((currentAttendanceCount / (totalAttendanceTarget || 72)) * 100));
 
-  const handleFinish = () => {
+  const handleFinish = async () => {
     stopBroadcastTimer();
+    let targetSessionId = activeSessionId;
+    try {
+      const activeRes = await api.getActiveSession();
+      if (activeRes && activeRes.success && activeRes.session && activeRes.session._id) {
+        targetSessionId = activeRes.session._id;
+        setActiveSessionId(targetSessionId);
+      }
+    } catch (e) {
+      console.warn('Check active session before finish warning:', e);
+    }
+
+    if (targetSessionId) {
+      try {
+        await api.endSession(targetSessionId);
+      } catch (e) {
+        console.warn('End session error:', e);
+      }
+    }
     navigateTo('TEACHER_REPORT');
+  };
+
+  const handleBackToDashboard = () => {
+    stopBroadcastTimer();
+    navigateTo('TEACHER_DASHBOARD');
   };
 
   return (
     <View style={styles.container}>
-      <CommonTopBar title="Live Broadcast" showBack onBack={handleFinish} />
+      <CommonTopBar title="Live Broadcast" showBack onBack={handleBackToDashboard} />
 
       <ScrollView contentContainerStyle={styles.content}>
         {/* Status Bar */}
         <View style={styles.liveBar}>
           <View style={styles.liveIndicator}>
-            <View style={styles.liveDot} />
+            <Animated.View style={[styles.liveDot, { transform: [{ scale: pulseDot }] }]} />
             <Text style={styles.liveText}>TRANSMITTING LIVE</Text>
           </View>
           <View style={styles.timerBox}>
@@ -55,10 +185,10 @@ export const TeacherBroadcastActiveScreen: React.FC = () => {
           <Text style={styles.pinLabel}>STUDENT SESSION PIN</Text>
           <View style={styles.pinRow}>
             <View style={styles.pinBox}>
-              <Text style={styles.pinDigit}>{broadcastPin[0] || '2'}</Text>
+              <Text style={styles.pinDigit}>{broadcastPin[0] || '-'}</Text>
             </View>
             <View style={styles.pinBox}>
-              <Text style={styles.pinDigit}>{broadcastPin[1] || '9'}</Text>
+              <Text style={styles.pinDigit}>{broadcastPin[1] || '-'}</Text>
             </View>
           </View>
           <Text style={styles.pinHint}>
@@ -139,12 +269,19 @@ export const TeacherBroadcastActiveScreen: React.FC = () => {
         {/* Live Join Feed */}
         <View style={styles.feedCard}>
           <Text style={styles.feedTitle}>Recent Student Check-Ins</Text>
-          {recentJoins.map((join, idx) => (
-            <View key={idx} style={styles.feedItem}>
-              <MaterialIcons name="check-circle" size={18} color={Colors.emeraldCheck} />
-              <Text style={styles.feedText}>{join}</Text>
+          {recentJoins.length === 0 ? (
+            <View style={{ alignItems: 'center', paddingVertical: 18, gap: 4 }}>
+              <MaterialIcons name="hourglass-empty" size={24} color={Colors.slate400} />
+              <Text style={{ fontSize: 13, color: Colors.slate500 }}>Waiting for students to enter PIN...</Text>
             </View>
-          ))}
+          ) : (
+            recentJoins.map((join, idx) => (
+              <View key={idx} style={styles.feedItem}>
+                <MaterialIcons name="check-circle" size={18} color={Colors.emeraldCheck} />
+                <Text style={styles.feedText}>{join}</Text>
+              </View>
+            ))
+          )}
         </View>
 
         {/* Stop / End Session Action */}

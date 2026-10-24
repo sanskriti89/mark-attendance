@@ -1,13 +1,14 @@
 import { Platform } from 'react-native';
 
 // Dynamically resolve API URL based on browser origin (phone/web) or LAN IP
-const getApiBaseUrl = () => {
-  if (typeof window !== 'undefined' && window.location && window.location.origin) {
-    // If running in development with Expo web dev server (e.g. port 8081 or 19006)
-    if (window.location.port && window.location.port !== '5000') {
-      return `http://${window.location.hostname || 'localhost'}:5000/api`;
+export const getApiBaseUrl = () => {
+  if (typeof window !== 'undefined' && window.location) {
+    const loc = window.location;
+    if (loc.port === '5000' || !loc.port) {
+      return `${loc.origin}/api`;
     }
-    return `${window.location.origin}/api`;
+    // If running in development with Expo web dev server (e.g. port 8081 or 19006)
+    return `${loc.protocol}//${loc.hostname || 'localhost'}:5000/api`;
   }
   return 'http://192.168.1.24:5000/api';
 };
@@ -40,14 +41,28 @@ const request = async <T = any>(
     headers['Authorization'] = `Bearer ${authToken}`;
   }
 
+  const baseUrl = getApiBaseUrl();
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 20000);
+
   try {
-    const res = await fetch(`${API_BASE_URL}${endpoint}`, {
+    const res = await fetch(`${baseUrl}${endpoint}`, {
       ...options,
       headers,
+      signal: controller.signal,
     });
+    clearTimeout(timeoutId);
     const data = await res.json();
     return data;
   } catch (error: any) {
+    clearTimeout(timeoutId);
+    if (error.name === 'AbortError') {
+      console.warn(`[API Timeout] ${endpoint} took > 20s`);
+      return {
+        success: false,
+        message: 'Server response timed out. Please check if the backend server is running.',
+      };
+    }
     console.warn(`[API Error] ${endpoint}:`, error.message);
     return {
       success: false,
@@ -58,10 +73,28 @@ const request = async <T = any>(
 
 export const api = {
   // Auth
-  login: (identifier: string, password: string, role?: string) =>
+  login: (identifier: string, password: string, role?: string, deviceId?: string) =>
     request('/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ identifier, password, role }),
+      body: JSON.stringify({ identifier, password, role, deviceId }),
+    }),
+
+  sendResetOtp: (identifier: string, email: string, role?: string) =>
+    request('/auth/send-reset-otp', {
+      method: 'POST',
+      body: JSON.stringify({ identifier, email, role }),
+    }),
+
+  resetPassword: (
+    identifier: string,
+    email: string,
+    otp: string,
+    newPassword: string,
+    role?: string
+  ) =>
+    request('/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify({ identifier, email, otp, newPassword, role }),
     }),
 
   registerStudent: (payload: any) =>
@@ -105,19 +138,30 @@ export const api = {
         headers['Content-Type'] = 'application/json';
       }
 
-      const res = await fetch(`${API_BASE_URL}/auth/parse-pdf`, {
+      const baseUrl = getApiBaseUrl();
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 25000);
+      const res = await fetch(`${baseUrl}/auth/parse-pdf`, {
         method: 'POST',
         headers,
         body,
+        signal: controller.signal,
       });
+      clearTimeout(timeoutId);
       return await res.json();
     } catch (e: any) {
       console.warn('[PDF API Error]', e.message);
-      return { success: false, message: e.message };
+      return {
+        success: false,
+        message: e.name === 'AbortError' ? 'File parsing timed out.' : e.message,
+      };
     }
   },
 
   getMe: () => request('/auth/me'),
+
+  lookupUser: (identifier: string) =>
+    request(`/auth/lookup?identifier=${encodeURIComponent(identifier)}`),
 
   // Sessions
   startBroadcast: (payload: {
@@ -137,8 +181,9 @@ export const api = {
     }),
 
   getActiveSession: (params?: { courseCode?: string; teacherFacultyId?: string }) => {
-    const query = new URLSearchParams(params as any).toString();
-    return request(`/sessions/active?${query}`);
+    const searchParams = new URLSearchParams(params as any);
+    searchParams.set('_t', Date.now().toString());
+    return request(`/sessions/active?${searchParams.toString()}`);
   },
 
   endSession: (sessionId: string) =>
@@ -168,11 +213,12 @@ export const api = {
     }),
 
   getSessionAttendance: (sessionId: string) =>
-    request(`/attendance/session/${sessionId}`),
+    request(`/attendance/session/${sessionId}?_t=${Date.now()}`),
 
-  getReports: (params?: { department?: string; courseCode?: string; search?: string }) => {
-    const query = new URLSearchParams(params as any).toString();
-    return request(`/attendance/reports?${query}`);
+  getReports: (params?: { department?: string; courseCode?: string; search?: string; sessionId?: string }) => {
+    const searchParams = new URLSearchParams(params as any);
+    searchParams.set('_t', Date.now().toString());
+    return request(`/attendance/reports?${searchParams.toString()}`);
   },
 
   toggleAttendance: (recordId: string) =>
@@ -180,12 +226,66 @@ export const api = {
       method: 'PATCH',
     }),
 
-  // Schedule
-  getTeacherSchedule: (facultyId: string) =>
-    request(`/schedule/teacher/${facultyId}`),
+  saveAttendanceReport: (payload: any) =>
+    request('/attendance/report/save', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
 
-  getStudentSchedule: (enrollmentNo: string) =>
-    request(`/schedule/student/${enrollmentNo}`),
+  getSavedReports: (params?: { courseCode?: string; teacherFacultyId?: string; department?: string; date?: string }) => {
+    const searchParams = new URLSearchParams(params as any);
+    searchParams.set('_t', Date.now().toString());
+    return request(`/attendance/report/saved?${searchParams.toString()}`);
+  },
+
+  emailAttendanceReport: (payload: {
+    courseCode?: string;
+    sessionId?: string;
+    email?: string;
+    teacherName?: string;
+    classroom?: string;
+    records?: any[];
+  }) =>
+    request('/attendance/report/email', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  getExportCsvUrl: (params?: { courseCode?: string; courseName?: string; sessionId?: string; department?: string; date?: string }) => {
+    const searchParams = new URLSearchParams(params as any);
+    return `${getApiBaseUrl()}/attendance/export/csv?${searchParams.toString()}`;
+  },
+
+  exportAttendanceCsv: async (params?: { courseCode?: string; courseName?: string; sessionId?: string; department?: string; date?: string; records?: any[] }) => {
+    if (params?.records && params.records.length > 0) {
+      const url = `${getApiBaseUrl()}/attendance/export/csv`;
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(params),
+      });
+      if (!res.ok) throw new Error('Failed to download CSV');
+      return await res.text();
+    }
+    const searchParams = new URLSearchParams(params as any);
+    const url = `${getApiBaseUrl()}/attendance/export/csv?${searchParams.toString()}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('Failed to download CSV');
+    return await res.text();
+  },
+
+  // Schedule
+  getTeacherSchedule: (facultyId: string, dayOfWeek?: string) => {
+    const encodedId = encodeURIComponent(facultyId);
+    const dayParam = dayOfWeek ? `?dayOfWeek=${encodeURIComponent(dayOfWeek)}` : '';
+    return request(`/schedule/teacher/${encodedId}${dayParam}`);
+  },
+
+  getStudentSchedule: (enrollmentNo: string, dayOfWeek?: string) => {
+    const encodedId = encodeURIComponent(enrollmentNo);
+    const dayParam = dayOfWeek ? `?dayOfWeek=${encodeURIComponent(dayOfWeek)}` : '';
+    return request(`/schedule/student/${encodedId}${dayParam}`);
+  },
 
   syncSchedule: (targetRole: 'TEACHER' | 'STUDENT', targetId: string, schedules: any[]) =>
     request('/schedule/sync', {

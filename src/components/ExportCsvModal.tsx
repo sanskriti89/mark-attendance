@@ -1,17 +1,107 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, Modal, StyleSheet, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, Modal, StyleSheet, ActivityIndicator, ScrollView } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors } from '../theme/colors';
 import { useAttendance } from '../context/AttendanceContext';
+import { api } from '../services/api';
 
 export const ExportCsvModal: React.FC = () => {
-  const { isExportModalOpen, setIsExportModalOpen, filteredRecords, setUserNotification } =
-    useAttendance();
-  const [includeDiscrepancy, setIncludeDiscrepancy] = useState(true);
+  const {
+    isExportModalOpen,
+    setIsExportModalOpen,
+    filteredRecords,
+    setUserNotification,
+    activeSubjectCode,
+    activeSubjectName,
+    teacherRegName,
+    teacherRegEmail,
+    activeClassroom,
+    activeSessionId,
+  } = useAttendance();
 
-  const handleExport = () => {
-    setIsExportModalOpen(false);
-    setUserNotification(`Exported ${filteredRecords.length} student attendance records to CSV.`);
+  const availableCourses = [
+    { code: 'CIUCMJT2', name: 'Operating Systems' },
+    { code: 'CIUCMJT1', name: 'Relational Database Management System' },
+    { code: 'SECC13', name: 'DBMS (Database Management Systems)' },
+    { code: 'VOCCILO03', name: 'Lab Based on Python' },
+    { code: 'CAUCMJT2', name: 'Principals of Operating Systems' },
+    { code: 'HIUCAET1', name: 'Hindi Bhasha Aur Sahitya' },
+    { code: 'All', name: 'All Enrolled Classes' },
+  ];
+
+  const [selectedCourseCode, setSelectedCourseCode] = useState(activeSubjectCode || 'CIUCMJT2');
+  const [isExporting, setIsExporting] = useState(false);
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
+
+  const selectedCourseObj = availableCourses.find((c) => c.code === selectedCourseCode) || {
+    code: selectedCourseCode,
+    name: activeSubjectName || 'University Lecture Course',
+  };
+
+  const handleDownloadCsv = async () => {
+    setIsExporting(true);
+    try {
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const csvText = await api.exportAttendanceCsv({
+        courseCode: selectedCourseCode !== 'All' ? selectedCourseCode : undefined,
+        courseName: selectedCourseObj.name,
+        sessionId: activeSessionId || undefined,
+        records: filteredRecords,
+      });
+
+      if (typeof window !== 'undefined' && window.document) {
+        const blob = new Blob([csvText], { type: 'text/csv;charset=utf-8;' });
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        const cleanName = selectedCourseCode.replace(/[^A-Z0-9_-]/gi, '');
+        link.setAttribute('download', `Attendance_${cleanName}_${todayStr}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+      } else {
+        const downloadUrl = api.getExportCsvUrl({
+          courseCode: selectedCourseCode,
+          courseName: selectedCourseObj.name,
+        });
+        if (typeof window !== 'undefined' && (window as any).open) {
+          (window as any).open(downloadUrl, '_blank');
+        }
+      }
+
+      setIsExportModalOpen(false);
+      setUserNotification(`📥 Excel/CSV attendance sheet downloaded for ${selectedCourseCode}!`);
+    } catch (err: any) {
+      setUserNotification(`❌ Export failed: ${err.message || 'Error downloading file'}`);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleSendEmail = async () => {
+    setIsSendingEmail(true);
+    try {
+      const res = await api.emailAttendanceReport({
+        courseCode: selectedCourseCode,
+        sessionId: activeSessionId || undefined,
+        email: teacherRegEmail || undefined,
+        teacherName: teacherRegName || 'Faculty',
+        classroom: activeClassroom || 'CSIT Room FB',
+        records: filteredRecords,
+      });
+
+      if (res && res.success) {
+        setIsExportModalOpen(false);
+        setUserNotification(`📧 Attendance report sent to ${res.emailSentTo || teacherRegEmail || 'faculty email'}!`);
+      } else {
+        setUserNotification(`⚠️ ${res?.message || 'Could not send report email.'}`);
+      }
+    } catch (err: any) {
+      setUserNotification(`❌ Email failed: ${err.message || 'Network error'}`);
+    } finally {
+      setIsSendingEmail(false);
+    }
   };
 
   return (
@@ -22,21 +112,46 @@ export const ExportCsvModal: React.FC = () => {
             <View style={styles.headerIcon}>
               <MaterialIcons name="table-view" size={24} color={Colors.teacherOrange} />
             </View>
-            <View>
-              <Text style={styles.title}>Export Attendance CSV</Text>
-              <Text style={styles.subtitle}>GGU CSIT Classroom Records</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.title}>Export & Email Attendance</Text>
+              <Text style={styles.subtitle}>GGU CSIT Classroom Official Records</Text>
             </View>
+            <TouchableOpacity onPress={() => setIsExportModalOpen(false)} style={styles.closeBtn}>
+              <MaterialIcons name="close" size={20} color={Colors.slate500} />
+            </TouchableOpacity>
           </View>
 
           <View style={styles.content}>
-            <Text style={styles.description}>
-              Download attendance roster for Course CS401 (Database Management Systems).
-            </Text>
+            <Text style={styles.sectionLabel}>Select Class / Course to Export:</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 4 }}>
+              <View style={{ flexDirection: 'row', gap: 6, paddingVertical: 4 }}>
+                {availableCourses.map((c) => {
+                  const isSel = c.code === selectedCourseCode;
+                  return (
+                    <TouchableOpacity
+                      key={c.code}
+                      style={[styles.coursePill, isSel && styles.coursePillActive]}
+                      onPress={() => setSelectedCourseCode(c.code)}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={[styles.coursePillText, isSel && styles.coursePillTextActive]}>
+                        {c.code}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </ScrollView>
+
+            <View style={styles.courseInfoBox}>
+              <Text style={styles.courseInfoTitle}>{selectedCourseObj.code}</Text>
+              <Text style={styles.courseInfoSub}>{selectedCourseObj.name}</Text>
+            </View>
 
             <View style={styles.statBox}>
               <View style={styles.statItem}>
                 <Text style={styles.statNum}>{filteredRecords.length}</Text>
-                <Text style={styles.statLabel}>Total Records</Text>
+                <Text style={styles.statLabel}>Total Enrolled</Text>
               </View>
               <View style={styles.statItem}>
                 <Text style={[styles.statNum, { color: Colors.emeraldCheck }]}>
@@ -52,30 +167,47 @@ export const ExportCsvModal: React.FC = () => {
               </View>
             </View>
 
-            <TouchableOpacity
-              style={styles.checkboxRow}
-              onPress={() => setIncludeDiscrepancy(!includeDiscrepancy)}
-              activeOpacity={0.8}
-            >
-              <MaterialIcons
-                name={includeDiscrepancy ? 'check-box' : 'check-box-outline-blank'}
-                size={22}
-                color={Colors.teacherOrange}
-              />
-              <Text style={styles.checkboxLabel}>Include physical audit discrepancy log</Text>
-            </TouchableOpacity>
+            <View style={styles.noticeBox}>
+              <MaterialIcons name="info-outline" size={16} color={Colors.teacherOrange} />
+              <Text style={styles.noticeText}>
+                Includes full roster with date, student enrollment, name, and Present/Absent status. Opens natively in Microsoft Excel.
+              </Text>
+            </View>
           </View>
 
           <View style={styles.actions}>
+            {/* Send to Email Button */}
             <TouchableOpacity
-              style={styles.cancelBtn}
-              onPress={() => setIsExportModalOpen(false)}
+              style={[styles.emailBtn, isSendingEmail && { opacity: 0.7 }]}
+              onPress={handleSendEmail}
+              disabled={isSendingEmail || isExporting}
+              activeOpacity={0.8}
             >
-              <Text style={styles.cancelText}>Cancel</Text>
+              {isSendingEmail ? (
+                <ActivityIndicator size="small" color={Colors.teacherOrange} />
+              ) : (
+                <MaterialIcons name="mail-outline" size={18} color={Colors.teacherOrange} />
+              )}
+              <Text style={styles.emailBtnText}>
+                {isSendingEmail ? 'Sending...' : 'Email Report'}
+              </Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.confirmBtn} onPress={handleExport}>
-              <MaterialIcons name="download" size={18} color={Colors.white} />
-              <Text style={styles.confirmText}>Export CSV</Text>
+
+            {/* Download Excel / CSV Button */}
+            <TouchableOpacity
+              style={[styles.confirmBtn, isExporting && { opacity: 0.7 }]}
+              onPress={handleDownloadCsv}
+              disabled={isExporting || isSendingEmail}
+              activeOpacity={0.8}
+            >
+              {isExporting ? (
+                <ActivityIndicator size="small" color={Colors.white} />
+              ) : (
+                <MaterialIcons name="file-download" size={18} color={Colors.white} />
+              )}
+              <Text style={styles.confirmText}>
+                {isExporting ? 'Downloading...' : 'Download Excel (CSV)'}
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -90,14 +222,19 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 24,
+    padding: 20,
   },
   dialog: {
     width: '100%',
-    maxWidth: 380,
+    maxWidth: 420,
     backgroundColor: Colors.white,
     borderRadius: 20,
     padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 8,
   },
   header: {
     flexDirection: 'row',
@@ -115,7 +252,7 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '800',
     color: Colors.slate900,
   },
   subtitle: {
@@ -123,13 +260,55 @@ const styles = StyleSheet.create({
     color: Colors.slate500,
     marginTop: 2,
   },
-  content: {
-    gap: 16,
+  closeBtn: {
+    padding: 4,
   },
-  description: {
+  content: {
+    gap: 12,
+  },
+  sectionLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.slate700,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  coursePill: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: Colors.slate100,
+    borderWidth: 1,
+    borderColor: Colors.slate200,
+  },
+  coursePillActive: {
+    backgroundColor: Colors.teacherOrange,
+    borderColor: Colors.teacherOrange,
+  },
+  coursePillText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.slate700,
+  },
+  coursePillTextActive: {
+    color: Colors.white,
+  },
+  courseInfoBox: {
+    backgroundColor: Colors.slate50,
+    padding: 10,
+    borderRadius: 10,
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.teacherOrange,
+  },
+  courseInfoTitle: {
     fontSize: 13,
+    fontWeight: '800',
+    color: Colors.slate800,
+  },
+  courseInfoSub: {
+    fontSize: 12,
     color: Colors.slate600,
-    lineHeight: 18,
+    marginTop: 2,
   },
   statBox: {
     flexDirection: 'row',
@@ -151,43 +330,57 @@ const styles = StyleSheet.create({
   statLabel: {
     fontSize: 11,
     color: Colors.slate500,
-    fontWeight: '500',
+    fontWeight: '600',
     marginTop: 2,
   },
-  checkboxRow: {
+  noticeBox: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 8,
+    backgroundColor: '#fff7ed',
+    padding: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#fed7aa',
   },
-  checkboxLabel: {
-    fontSize: 13,
-    color: Colors.slate700,
-    fontWeight: '500',
+  noticeText: {
+    fontSize: 11,
+    color: '#9a3412',
+    flex: 1,
+    lineHeight: 15,
   },
   actions: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
+    justifyContent: 'space-between',
     gap: 10,
-    marginTop: 20,
+    marginTop: 18,
   },
-  cancelBtn: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 8,
-  },
-  cancelText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: Colors.slate600,
-  },
-  confirmBtn: {
+  emailBtn: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    borderWidth: 1.5,
+    borderColor: Colors.teacherOrange,
+    backgroundColor: Colors.white,
+    paddingVertical: 11,
+    borderRadius: 10,
+  },
+  emailBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.teacherOrange,
+  },
+  confirmBtn: {
+    flex: 1.3,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
     gap: 6,
     backgroundColor: Colors.teacherOrange,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 8,
+    paddingVertical: 11,
+    borderRadius: 10,
   },
   confirmText: {
     fontSize: 13,
@@ -195,3 +388,4 @@ const styles = StyleSheet.create({
     color: Colors.white,
   },
 });
+

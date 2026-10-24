@@ -5,6 +5,7 @@ export type SessionStatus = 'ACTIVE' | 'EXPIRED' | 'ENDED';
 export interface ISession extends Document {
   teacherFacultyId: string;
   teacherName: string;
+  teacherEmail?: string;
   courseCode: string;
   courseName: string;
   classroom: string;
@@ -32,6 +33,11 @@ const SessionSchema = new Schema<ISession>(
     teacherName: {
       type: String,
       required: true,
+    },
+    teacherEmail: {
+      type: String,
+      trim: true,
+      lowercase: true,
     },
     courseCode: {
       type: String,

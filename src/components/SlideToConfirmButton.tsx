@@ -192,6 +192,7 @@ export const SlideToConfirmButton: React.FC<SlideToConfirmButtonProps> = ({
         Platform.OS === 'web' && ({ userSelect: 'none', touchAction: 'none' } as any),
       ]}
       onLayout={handleLayout}
+      {...panResponder.panHandlers}
     >
       {/* Background Track Fill */}
       <Animated.View
