@@ -13,6 +13,7 @@ import {
 import { GGU_OFFICIAL_COURSE_SELECTIONS } from '../data/gguUniversityData';
 import { api, setAuthToken } from '../services/api';
 import { getAuthSession, clearAuthSession } from '../services/sessionStorage';
+import { hapticFeedback } from '../utils/haptics';
 
 interface AttendanceContextType {
   // Navigation & Role
@@ -687,6 +688,7 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   const submitStudentAttendance = async () => {
     if (studentEnteredPin.length < 2) {
+      hapticFeedback.warning();
       setStudentAttendanceMessage('⚠️ Please enter the 2-digit PIN broadcasted by your teacher.');
       return;
     }
@@ -702,6 +704,7 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     try {
       const res = await api.markAttendance(payload);
       if (res && res.success) {
+        hapticFeedback.success();
         setStudentAttendanceMarked(true);
         const successMsg = res.message || `Attendance marked successfully for ${activeSubjectCode || 'class'}!`;
         setStudentAttendanceMessage(`✅ ${successMsg}`);
@@ -721,9 +724,11 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           ...prev,
         ]);
       } else {
+        hapticFeedback.error();
         setStudentAttendanceMessage(`❌ ${res?.message || 'Invalid PIN or session expired.'}`);
       }
     } catch (err: any) {
+      hapticFeedback.error();
       setStudentAttendanceMessage(`❌ Error: ${err?.message || 'Could not verify attendance.'}`);
     }
   };
@@ -760,6 +765,7 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const stopBroadcastTimer = () => setIsBroadcasting(false);
 
   const toggleRecordAttendance = async (sNo: string) => {
+    hapticFeedback.medium();
     let targetRec: StudentAttendanceRecord | undefined;
     setAttendanceRecords((prev) =>
       prev.map((r) => {

@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -15,6 +15,7 @@ import { useAttendance } from '../context/AttendanceContext';
 import { CommonTopBar } from '../components/CommonTopBar';
 import { NumericKeypad } from '../components/NumericKeypad';
 import { SlideToConfirmButton } from '../components/SlideToConfirmButton';
+import { hapticFeedback } from '../utils/haptics';
 
 export const StudentAttendanceScreen: React.FC = () => {
   const {
@@ -39,6 +40,7 @@ export const StudentAttendanceScreen: React.FC = () => {
 
   // Success dialog spring scale
   const successScale = useRef(new Animated.Value(0.85)).current;
+  const [isScrollEnabled, setIsScrollEnabled] = useState(true);
 
   useEffect(() => {
     // Continuous subtle radar beacon pulse
@@ -81,6 +83,7 @@ export const StudentAttendanceScreen: React.FC = () => {
 
   useEffect(() => {
     if (studentAttendanceMarked) {
+      hapticFeedback.success();
       successScale.setValue(0.8);
       Animated.spring(successScale, {
         toValue: 1,
@@ -90,6 +93,12 @@ export const StudentAttendanceScreen: React.FC = () => {
       }).start();
     }
   }, [studentAttendanceMarked]);
+
+  useEffect(() => {
+    if (studentAttendanceMessage && !studentAttendanceMarked) {
+      hapticFeedback.error();
+    }
+  }, [studentAttendanceMessage, studentAttendanceMarked]);
 
   useEffect(() => {
     // Ensure student screen always starts completely clean with empty PIN entry
@@ -104,7 +113,7 @@ export const StudentAttendanceScreen: React.FC = () => {
     <View style={styles.container}>
       <CommonTopBar title="Mark Attendance" />
 
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={styles.content} scrollEnabled={isScrollEnabled}>
         {/* Campus Geofence Status Card */}
         <View style={styles.geofenceCard}>
           <View style={styles.geofenceHeader}>
@@ -182,9 +191,18 @@ export const StudentAttendanceScreen: React.FC = () => {
 
         {/* Keypad */}
         <NumericKeypad
-          onDigitClick={appendStudentPinDigit}
-          onBackspaceClick={backspaceStudentPin}
-          onClearClick={clearStudentPin}
+          onDigitClick={(d) => {
+            hapticFeedback.light();
+            appendStudentPinDigit(d);
+          }}
+          onBackspaceClick={() => {
+            hapticFeedback.light();
+            backspaceStudentPin();
+          }}
+          onClearClick={() => {
+            hapticFeedback.medium();
+            clearStudentPin();
+          }}
         />
 
         {/* Confirm Attendance (Slide Only) */}
@@ -194,6 +212,7 @@ export const StudentAttendanceScreen: React.FC = () => {
             brandColor={Colors.studentTeal}
             isConfirmed={studentAttendanceMarked}
             onConfirmed={submitStudentAttendance}
+            onSlideActive={(active) => setIsScrollEnabled(!active)}
           />
           <Text style={styles.slideNotice}>
             Ensure you are physically inside {activeClassroom} before confirming

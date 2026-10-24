@@ -13,6 +13,7 @@ import { Colors } from '../theme/colors';
 import { useAttendance } from '../context/AttendanceContext';
 import { CommonTopBar } from '../components/CommonTopBar';
 import { api } from '../services/api';
+import { hapticFeedback } from '../utils/haptics';
 
 export const TeacherReportScreen: React.FC = () => {
   const {
@@ -145,12 +146,14 @@ export const TeacherReportScreen: React.FC = () => {
 
       const res = await api.saveAttendanceReport(payload);
       if (res && res.success) {
+        hapticFeedback.success();
         setReportSavedSuccess(true);
         const emailMsg = res.emailSent ? ` & emailed to ${res.emailSentTo || teacherRegEmail}` : '';
         setUserNotification(`✅ Official attendance report saved & archived${emailMsg}!`);
         setTimeout(() => setReportSavedSuccess(false), 5000);
       }
     } catch (e: any) {
+      hapticFeedback.error();
       console.warn('Save report error:', e);
       setUserNotification('❌ Error saving attendance report: ' + e.message);
     } finally {
@@ -180,11 +183,14 @@ export const TeacherReportScreen: React.FC = () => {
       });
 
       if (res && res.success) {
+        hapticFeedback.success();
         setUserNotification(`📧 Attendance report successfully emailed to ${res.emailSentTo || teacherRegEmail || 'faculty email'}!`);
       } else {
+        hapticFeedback.warning();
         setUserNotification(`⚠️ ${res?.message || 'Could not send report email.'}`);
       }
     } catch (err: any) {
+      hapticFeedback.error();
       setUserNotification(`❌ Email failed: ${err.message || 'Network error'}`);
     } finally {
       setIsSendingDirectEmail(false);
@@ -376,46 +382,46 @@ export const TeacherReportScreen: React.FC = () => {
             </View>
           ) : (
             filteredRecords.map((record) => (
-            <View key={record.sNo} style={styles.recordItem}>
-              <View style={styles.recordLeft}>
-                <View style={styles.sNoBadge}>
-                  <Text style={styles.sNoText}>{record.sNo}</Text>
-                </View>
-                <View>
-                  <Text style={styles.studentName}>{record.studentName}</Text>
-                  <View style={styles.metaRow}>
-                    <Text style={styles.deptBadge}>{record.dept}</Text>
-                    <Text style={styles.courseTypeBadge}>{record.courseType}</Text>
-                    <Text style={styles.checkInTime}>• {record.checkInTime}</Text>
+              <View key={record.sNo} style={styles.recordItem}>
+                <View style={styles.recordLeft}>
+                  <View style={styles.sNoBadge}>
+                    <Text style={styles.sNoText}>{record.sNo}</Text>
+                  </View>
+                  <View>
+                    <Text style={styles.studentName}>{record.studentName}</Text>
+                    <View style={styles.metaRow}>
+                      <Text style={styles.deptBadge}>{record.dept}</Text>
+                      <Text style={styles.courseTypeBadge}>{record.courseType}</Text>
+                      <Text style={styles.checkInTime}>• {record.checkInTime}</Text>
+                    </View>
                   </View>
                 </View>
-              </View>
 
-              <TouchableOpacity
-                style={[
-                  styles.statusBadge,
-                  record.isPresent ? styles.statusPresent : styles.statusAbsent,
-                ]}
-                onPress={() => toggleRecordAttendance(record.sNo)}
-              >
-                <MaterialIcons
-                  name={record.isPresent ? 'check' : 'close'}
-                  size={14}
-                  color={record.isPresent ? Colors.emeraldCheck : Colors.liveRed}
-                />
-                <Text
+                <TouchableOpacity
                   style={[
-                    styles.statusText,
-                    record.isPresent
-                      ? styles.statusPresentText
-                      : styles.statusAbsentText,
+                    styles.statusBadge,
+                    record.isPresent ? styles.statusPresent : styles.statusAbsent,
                   ]}
+                  onPress={() => toggleRecordAttendance(record.sNo)}
                 >
-                  {record.isPresent ? 'Present' : 'Absent'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          )))}
+                  <MaterialIcons
+                    name={record.isPresent ? 'check' : 'close'}
+                    size={14}
+                    color={record.isPresent ? Colors.emeraldCheck : Colors.liveRed}
+                  />
+                  <Text
+                    style={[
+                      styles.statusText,
+                      record.isPresent
+                        ? styles.statusPresentText
+                        : styles.statusAbsentText,
+                    ]}
+                  >
+                    {record.isPresent ? 'Present' : 'Absent'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )))}
         </View>
       </ScrollView>
     </View>
