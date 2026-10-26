@@ -332,6 +332,20 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         extractedRoom = 'Room FB-12';
       }
 
+      // Suggest official GGU faculty email if not printed on physical card
+      if (!extractedEmail && extractedName) {
+        const cleanNames = extractedName
+          .replace(/\b(Mr\.|Mrs\.|Ms\.|Dr\.|Prof\.|Doctor|Professor|Shri|Smt\.)\s*/gi, '')
+          .trim()
+          .toLowerCase()
+          .split(/\s+/);
+        if (cleanNames.length >= 2) {
+          extractedEmail = `${cleanNames[0]}.${cleanNames[cleanNames.length - 1]}@ggu.ac.in`;
+        } else if (cleanNames.length === 1 && cleanNames[0]) {
+          extractedEmail = `${cleanNames[0]}@ggu.ac.in`;
+        }
+      }
+
       setUploadedTeacherIdCardName(fileName);
       if (extractedName) setTeacherRegName(extractedName);
       if (extractedFacId) setTeacherRegFacultyId(extractedFacId);

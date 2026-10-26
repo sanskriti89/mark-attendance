@@ -196,7 +196,7 @@ export const extractDetailsFromText = (rawText: string): ExtractedStudentDetails
     name = samarthNameMatch[1].trim().replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').toUpperCase();
   } else {
     const idCardNameMatch = rawText.match(
-      /(?:Faculty\s*Name|Teacher\s*Name|Employee\s*Name|Name\s*of\s*Cardholder|Name)[\s:.\-_|=]+([A-Za-z\s.]{3,35})(?=\r|\n|$|\s+(?:Faculty|ID|Designation|Department|Email|Phone|Mobile|Office|Session|Cabin|Valid|Blood))/i
+      /(?:Faculty\s*Name|Teacher\s*Name|Employee\s*Name|Name\s*of\s*Cardholder|(?<![FfHhMm]\.\s*)(?<!Father'?s?\s*)(?<!Mother'?s?\s*)\bName\b)[\s:.\-_|=]+([A-Za-z\s.]{3,35})(?=\r|\n|$|\s+(?:Faculty|ID|Designation|Department|Email|Phone|Mobile|Office|Session|Cabin|Valid|Blood))/i
     );
     if (idCardNameMatch) {
       name = idCardNameMatch[1].trim().replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ');
@@ -216,7 +216,7 @@ export const extractDetailsFromText = (rawText: string): ExtractedStudentDetails
 
   // 3. Department Extraction
   let department = '';
-  if (/COMPUTER\s*APPLICATION|\bBCA\b|COMPUTER\s*SCIENCE|BSCS|\bCSIT\b/i.test(rawText)) {
+  if (/COMPUTER\s*APPLICATION|\bBCA\b|COMPUTER\s*SCIENCE|COMP\.?\s*SC|INFO\.?\s*TECH|BSCS|\bCSIT\b/i.test(rawText)) {
     department = 'CSIT';
   } else if (/COMPUTER\s*SCIENCE\s*(&|and)?\s*ENGINEERING|\bCSE\b/i.test(rawText)) {
     department = 'CSE';
@@ -474,50 +474,66 @@ export const extractDetailsFromText = (rawText: string): ExtractedStudentDetails
   );
 
   // --- Teacher-Specific Profile Extraction ---
-  let facultyId = '';
-  const facIdDirectMatch = rawText.match(/\b(?:GGV\/|GGU\/)?(?:FAC|EMP|GGU[-_]?FAC)[-_/][A-Za-z0-9\-_/]+\b/i);
-  if (facIdDirectMatch) {
-    facultyId = facIdDirectMatch[0].trim().toUpperCase();
-  } else {
-    const facLabelMatch = rawText.match(
-      /(?:Faculty\s*(?:ID|Code|No)|Emp(?:loyee)?\s*(?:ID|Code|No)|Teacher\s*ID|ID\s*No\.?|Card\s*No)[\s:.\-_|=]+([A-Za-z0-9\-_/]+)/i
-    );
-    if (facLabelMatch && !/^(FACULTY|CARD|SMART|UNIVERSITY)$/i.test(facLabelMatch[1])) {
-      facultyId = facLabelMatch[1].trim().toUpperCase();
-    }
-  }
-
-  let teacherName = '';
-  const drProfMatch = rawText.match(/\b(?:Dr\.|Prof\.|Doctor|Professor)\s+([A-Za-z\s.]{3,35})(?=\r|\n|$|\s+(?:Faculty|ID|Designation|Department|Email|Phone|Mobile|Office|Room|Cabin|Valid|Blood))/i);
-  if (drProfMatch) {
-    teacherName = drProfMatch[0].trim().replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ');
-  } else {
-    const teacherNameLabel = rawText.match(
-      /(?:Faculty\s*Name|Teacher\s*Name|Employee\s*Name|Name\s*of\s*Faculty|Name|Candidate'?s?\s*Name)[\s:.\-_|=]+([A-Za-z\s.]{3,35})(?=\r|\n|$|\s+(?:Faculty|ID|Designation|Department|Email|Phone|Mobile|Office|Session|Cabin|Valid|Blood))/i
-    );
-    if (teacherNameLabel) {
-      teacherName = teacherNameLabel[1].trim().replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ');
-    } else if (name) {
-      teacherName = name;
-    }
-  }
-
-  if (teacherName) {
-    teacherName = teacherName
-      .replace(/^[^A-Za-z]*(?:[A-Za-z]{1,2}\s+)*(Dr\.|Prof\.|Doctor|Professor)\b/i, '$1')
-      .replace(/^[|:_.\-~=]+\s*/, '')
-      .replace(/^[A-Za-z]\s+(?=[A-Z][a-z])/, '')
-      .replace(/\b(FACULTY|ID|CARD|GGU|UNIVERSITY|DEPARTMENT|DESIGNATION|DETAILS)\b/gi, '')
-      .replace(/\s+/g, ' ')
-      .trim();
-  }
-
+  // 1. Designation
   let designation = '';
   const desigMatch = rawText.match(
     /\b(Assistant\s*Professor(?:\s*\(Grade\s*[I|V|X\d]+\))?|Associate\s*Professor|Professor|Head\s*of\s*(?:the\s*)?Department|HOD|Dean|Senior\s*Professor|Lecturer|Guest\s*Faculty)\b/i
   );
   if (desigMatch) {
     designation = desigMatch[1].trim();
+  }
+
+  // 2. Faculty / Employee ID
+  let facultyId = '';
+  const facIdDirectMatch = rawText.match(/\b(?:GGV\/|GGU\/)?(?:FAC|EMP|GGU[-_]?FAC)[-_/][A-Za-z0-9\-_/]+\b/i);
+  if (facIdDirectMatch) {
+    facultyId = facIdDirectMatch[0].trim().toUpperCase();
+  } else {
+    const empIdMatch = rawText.match(
+      /(?:Emp\.?\s*(?:ID|Code|No)?|Faculty\s*(?:ID|Code|No)|Employee\s*(?:ID|Code|No)|ID\s*No\.?|Card\s*No)[\s:.\-_|=]+([A-Za-z0-9\-_/]{4,20})/i
+    );
+    if (empIdMatch && !/^(FACULTY|CARD|SMART|UNIVERSITY)$/i.test(empIdMatch[1])) {
+      facultyId = empIdMatch[1].trim().toUpperCase();
+    }
+  }
+
+  // 3. Teacher Name (Exclude Father Name / F. Name)
+  let teacherName = '';
+  const titleMatch = rawText.match(
+    /\b(Mr\.|Mrs\.|Ms\.|Dr\.|Prof\.|Doctor|Professor|Shri|Smt\.)\s+([A-Za-z][A-Za-z\s.]{2,30}?)(?=\r|\n|$|\s+(?:Assistant|Associate|Professor|Faculty|ID|Emp|Designation|Department|Dept|Email|Phone|Mobile|Office|Room|Cabin|Valid|Blood|[0-9]))/i
+  );
+  if (titleMatch) {
+    teacherName = `${titleMatch[1]} ${titleMatch[2]}`.trim();
+  } else if (designation) {
+    // Check line immediately before designation on ID cards
+    const beforeDesigRegex = new RegExp(`(?:\\r|\\n|^)[|\\s]*([A-Za-z\\s.]{3,35})(?=[|\\s]*(?:\\r|\\n)+[|\\s]*${designation.replace(/\s+/g, '\\s+')})`, 'i');
+    const beforeMatch = rawText.match(beforeDesigRegex);
+    if (beforeMatch && !/(?:GURU|GHASIDAS|VISHWAVIDYALAYA|UNIVERSITY|BILASPUR)/i.test(beforeMatch[1])) {
+      teacherName = beforeMatch[1].trim();
+    }
+  }
+
+  if (!teacherName) {
+    // Explicitly exclude Father Name (F. Name)
+    const teacherNameLabel = rawText.match(
+      /(?:Faculty\s*Name|Teacher\s*Name|Employee\s*Name|Name\s*of\s*Cardholder|(?<![FfHhMm]\.\s*)(?<!Father'?s?\s*)Name)[\s:.\-_|=]+([A-Za-z\s.]{3,35})(?=\r|\n|$|\s+(?:Faculty|ID|Designation|Department|Email|Phone|Mobile|Office|Session|Cabin|Valid|Blood))/i
+    );
+    if (teacherNameLabel) {
+      teacherName = teacherNameLabel[1].trim().replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ');
+    } else if (name && !/\b(?:Father|F\.\s*Name)\b/i.test(name)) {
+      teacherName = name;
+    }
+  }
+
+  if (teacherName) {
+    teacherName = teacherName
+      .replace(/^[|:._\-~=\s]+/, '')
+      .replace(/[\s0-9|:._\-~=]+$/, '')
+      .replace(/^[^A-Za-z]*(?:[A-Za-z]{1,2}\s+)*(Mr\.|Mrs\.|Ms\.|Dr\.|Prof\.|Doctor|Professor)\b/i, '$1')
+      .replace(/\b(Assistant\s*Professor|Associate\s*Professor|Professor|HOD|Dean|Lecturer|Guest\s*Faculty)\b/gi, '')
+      .replace(/\b(FACULTY|ID|CARD|GGU|UNIVERSITY|DEPARTMENT|DESIGNATION|DETAILS)\b/gi, '')
+      .replace(/\s+/g, ' ')
+      .trim();
   }
 
   let phone = '';
@@ -537,6 +553,12 @@ export const extractDetailsFromText = (rawText: string): ExtractedStudentDetails
     officeRoom = roomMatch[1].trim();
   }
 
+  const isTeacherCard = !!(teacherName || designation || (facultyId && !enrollmentNo));
+  if (isTeacherCard) {
+    enrolledCourses.length = 0;
+    extractedCoursesDetails.length = 0;
+  }
+
   console.log('[OCR/Parse Final Output]', {
     enrollmentNo,
     name,
@@ -550,7 +572,7 @@ export const extractDetailsFromText = (rawText: string): ExtractedStudentDetails
   });
 
   return {
-    name,
+    name: name || teacherName || '',
     enrollmentNo,
     email,
     department,
