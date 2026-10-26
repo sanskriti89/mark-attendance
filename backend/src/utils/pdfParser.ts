@@ -557,6 +557,7 @@ export const extractDetailsFromText = (rawText: string): ExtractedStudentDetails
   if (isTeacherCard) {
     enrolledCourses.length = 0;
     extractedCoursesDetails.length = 0;
+    email = '';
   }
 
   console.log('[OCR/Parse Final Output]', {

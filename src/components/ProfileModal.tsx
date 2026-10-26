@@ -54,19 +54,8 @@ export const ProfileModal: React.FC = () => {
     : (studentRegEmail || (studentEnrollment ? `${studentEnrollment.toLowerCase().replace(/[^a-z0-9]/g, '')}@ggu.ac.in` : 'N/A'));
 
   const handleSignOutPress = () => {
-    if (currentRole === 'STUDENT') {
-      Alert.alert(
-        'Student Sign Out',
-        'Notice: Yeh device aaj aapke student account ke sath registered hai. Agar aap logout karenge, tab bhi midnight (raat 12 baje) tak koi doosra student is device par login nahi kar sakega.\n\nKya aap logout karna chahte hain?',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Sign Out', style: 'destructive', onPress: signOut },
-        ],
-        { cancelable: true }
-      );
-    } else {
-      signOut();
-    }
+    setIsProfileSheetOpen(false);
+    signOut();
   };
 
   return (
