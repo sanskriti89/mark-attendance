@@ -39,10 +39,31 @@ export const TeacherReportScreen: React.FC = () => {
     activeClassroom,
     teacherDepartment,
     teacherRegEmail,
+    teacherDailySchedule,
+    extractedTeacherClasses,
     navigateTo,
   } = useAttendance();
 
-  const availableCourses = [
+  // Dynamically collect unique courses from timetable and active broadcast
+  const coursesMap = new Map<string, string>();
+
+  if (activeSubjectCode && activeSubjectName) {
+    coursesMap.set(activeSubjectCode.toUpperCase(), activeSubjectName);
+  }
+
+  const scheduleList = teacherDailySchedule && teacherDailySchedule.length > 0
+    ? teacherDailySchedule
+    : extractedTeacherClasses || [];
+
+  for (const s of scheduleList) {
+    if (s.courseCode && s.courseName) {
+      coursesMap.set(s.courseCode.toUpperCase(), s.courseName);
+    }
+  }
+
+  const defaultCourseList = [
+    { code: 'CIUAMJT1', name: 'Programming using C -Theory' },
+    { code: 'CIUAMJL1', name: 'Programming using C - Lab' },
     { code: 'CIUCMJT2', name: 'Operating Systems' },
     { code: 'CIUCMJT1', name: 'Relational Database Management System' },
     { code: 'SECC13', name: 'DBMS (Database Management Systems)' },
@@ -51,16 +72,32 @@ export const TeacherReportScreen: React.FC = () => {
     { code: 'HIUCAET1', name: 'Hindi Bhasha Aur Sahitya' },
   ];
 
-  const [selectedCourseCode, setSelectedCourseCode] = useState(activeSubjectCode || 'CIUCMJT2');
+  for (const d of defaultCourseList) {
+    if (!coursesMap.has(d.code.toUpperCase())) {
+      coursesMap.set(d.code.toUpperCase(), d.name);
+    }
+  }
+
+  const availableCourses = Array.from(coursesMap.entries()).map(([code, name]) => ({ code, name }));
+
+  const [selectedCourseCode, setSelectedCourseCode] = useState(activeSubjectCode || availableCourses[0]?.code || 'CIUAMJT1');
   const [isLoadingRecords, setIsLoadingRecords] = useState(false);
   const [isSavingReport, setIsSavingReport] = useState(false);
   const [reportSavedSuccess, setReportSavedSuccess] = useState(false);
   const [isSendingDirectEmail, setIsSendingDirectEmail] = useState(false);
 
-  const selectedCourseObj = availableCourses.find((c) => c.code === selectedCourseCode) || {
-    code: selectedCourseCode,
-    name: activeSubjectName || 'University Lecture Course',
-  };
+  useEffect(() => {
+    if (activeSubjectCode) {
+      setSelectedCourseCode(activeSubjectCode);
+    }
+  }, [activeSubjectCode]);
+
+  const selectedCourseObj = (selectedCourseCode === activeSubjectCode && activeSubjectName)
+    ? { code: selectedCourseCode, name: activeSubjectName }
+    : availableCourses.find((c) => c.code.toUpperCase() === selectedCourseCode.toUpperCase()) || {
+        code: selectedCourseCode,
+        name: activeSubjectName || 'University Lecture Course',
+      };
 
   const fetchReports = useCallback(async () => {
     setIsLoadingRecords(true);
@@ -333,6 +370,37 @@ export const TeacherReportScreen: React.FC = () => {
               <MaterialIcons name="clear" size={18} color={Colors.slate400} />
             </TouchableOpacity>
           )}
+        </View>
+
+        {/* Filter Chips - Course Selection */}
+        <View style={{ marginBottom: 6 }}>
+          <Text style={{ fontSize: 11, fontWeight: '700', color: Colors.slate500, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4, marginLeft: 2 }}>
+            Selected Course ({availableCourses.length})
+          </Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipRow}>
+            {availableCourses.map((c) => {
+              const isSel = selectedCourseCode.toUpperCase() === c.code.toUpperCase();
+              return (
+                <TouchableOpacity
+                  key={c.code}
+                  style={[
+                    styles.filterChip,
+                    isSel && styles.activeFilterChip,
+                  ]}
+                  onPress={() => setSelectedCourseCode(c.code)}
+                >
+                  <Text
+                    style={[
+                      styles.filterChipText,
+                      isSel && styles.activeFilterChipText,
+                    ]}
+                  >
+                    {c.code}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
         </View>
 
         {/* Filter Chips - Department */}

@@ -453,7 +453,7 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           if (!trimmed || /Course\s+Course\s+Code/i.test(trimmed)) continue;
 
           const rowTokens = trimmed.split(/[|\t\s~–—]+/).filter(Boolean);
-          const codeTokenIdx = rowTokens.findIndex((t) => /^[A-Za-z]{2,8}\w*\d\w*$/i.test(t) && t.length >= 4 && t.length <= 14);
+          const codeTokenIdx = rowTokens.findIndex((t: string) => /^[A-Za-z]{2,8}\w*\d\w*$/i.test(t) && t.length >= 4 && t.length <= 14);
 
           if (codeTokenIdx !== -1) {
             const cCode = rowTokens[codeTokenIdx].toUpperCase();
@@ -464,7 +464,7 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             let titleTokens = rowTokens.slice(codeTokenIdx + 1);
 
             let cCredits: number = cCode.includes('L') ? 1.0 : 3.0;
-            let cType = beforeTokens.find((t) => /^(Major|Minor|MDC|SEC|VAC|AEC|Core|Elective)$/i.test(t)) || (cCode.includes('L') ? 'Major Lab' : 'Major');
+            let cType = beforeTokens.find((t: string) => /^(Major|Minor|MDC|SEC|VAC|AEC|Core|Elective)$/i.test(t)) || (cCode.includes('L') ? 'Major Lab' : 'Major');
 
             for (let i = 0; i < 4 && titleTokens.length > 0; i++) {
               const last = titleTokens[titleTokens.length - 1];

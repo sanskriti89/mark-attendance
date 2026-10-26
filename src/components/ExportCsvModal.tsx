@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, Modal, StyleSheet, ActivityIndicator, ScrollView } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors } from '../theme/colors';
@@ -13,30 +13,69 @@ export const ExportCsvModal: React.FC = () => {
     setUserNotification,
     activeSubjectCode,
     activeSubjectName,
+    teacherDailySchedule,
+    extractedTeacherClasses,
     teacherRegName,
     teacherRegEmail,
     activeClassroom,
     activeSessionId,
   } = useAttendance();
 
-  const availableCourses = [
+  // Dynamically collect unique courses from timetable and active broadcast
+  const coursesMap = new Map<string, string>();
+
+  if (activeSubjectCode && activeSubjectName) {
+    coursesMap.set(activeSubjectCode.toUpperCase(), activeSubjectName);
+  }
+
+  const scheduleList = teacherDailySchedule && teacherDailySchedule.length > 0
+    ? teacherDailySchedule
+    : extractedTeacherClasses || [];
+
+  for (const s of scheduleList) {
+    if (s.courseCode && s.courseName) {
+      coursesMap.set(s.courseCode.toUpperCase(), s.courseName);
+    }
+  }
+
+  const defaultCourseList = [
+    { code: 'CIUAMJT1', name: 'Programming using C -Theory' },
+    { code: 'CIUAMJL1', name: 'Programming using C - Lab' },
     { code: 'CIUCMJT2', name: 'Operating Systems' },
     { code: 'CIUCMJT1', name: 'Relational Database Management System' },
     { code: 'SECC13', name: 'DBMS (Database Management Systems)' },
     { code: 'VOCCILO03', name: 'Lab Based on Python' },
     { code: 'CAUCMJT2', name: 'Principals of Operating Systems' },
     { code: 'HIUCAET1', name: 'Hindi Bhasha Aur Sahitya' },
-    { code: 'All', name: 'All Enrolled Classes' },
   ];
 
-  const [selectedCourseCode, setSelectedCourseCode] = useState(activeSubjectCode || 'CIUCMJT2');
+  for (const d of defaultCourseList) {
+    if (!coursesMap.has(d.code.toUpperCase())) {
+      coursesMap.set(d.code.toUpperCase(), d.name);
+    }
+  }
+
+  const availableCourses = Array.from(coursesMap.entries()).map(([code, name]) => ({ code, name }));
+  availableCourses.push({ code: 'All', name: 'All Enrolled Classes' });
+
+  const [selectedCourseCode, setSelectedCourseCode] = useState(activeSubjectCode || availableCourses[0]?.code || 'CIUAMJT1');
   const [isExporting, setIsExporting] = useState(false);
   const [isSendingEmail, setIsSendingEmail] = useState(false);
 
-  const selectedCourseObj = availableCourses.find((c) => c.code === selectedCourseCode) || {
-    code: selectedCourseCode,
-    name: activeSubjectName || 'University Lecture Course',
-  };
+  useEffect(() => {
+    if (activeSubjectCode) {
+      setSelectedCourseCode(activeSubjectCode);
+    } else if (availableCourses.length > 0 && selectedCourseCode === 'CIUCMJT2') {
+      setSelectedCourseCode(availableCourses[0].code);
+    }
+  }, [isExportModalOpen, activeSubjectCode]);
+
+  const selectedCourseObj = (selectedCourseCode === activeSubjectCode && activeSubjectName)
+    ? { code: selectedCourseCode, name: activeSubjectName }
+    : availableCourses.find((c) => c.code.toUpperCase() === selectedCourseCode.toUpperCase()) || {
+        code: selectedCourseCode,
+        name: activeSubjectName || 'University Lecture Course',
+      };
 
   const handleDownloadCsv = async () => {
     setIsExporting(true);

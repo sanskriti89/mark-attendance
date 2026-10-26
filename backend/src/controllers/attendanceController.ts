@@ -373,8 +373,8 @@ export const exportAttendanceCsv = async (
     const date = (req.body?.date || req.query.date) as string | undefined;
     const department = (req.body?.department || req.query.department) as string | undefined;
 
-    const titleCourse = courseCode && courseCode !== 'All' ? String(courseCode).toUpperCase() : 'All_Classes';
-    const cleanTarget = courseCode && courseCode !== 'All' ? String(courseCode).toUpperCase().replace(/[^A-Z0-9]/g, '') : '';
+    let titleCourse = courseCode && courseCode !== 'All' ? String(courseCode).toUpperCase() : 'All_Classes';
+    let cleanTarget = courseCode && courseCode !== 'All' ? String(courseCode).toUpperCase().replace(/[^A-Z0-9]/g, '') : '';
     const targetDateStr = date ? String(date) : getTodayDateString();
 
     // Map to hold unique present students: enrollment -> { date, name, enrollment }
@@ -444,25 +444,53 @@ export const exportAttendanceCsv = async (
       }
     }
 
+    let resolvedCourseName = (req.body?.courseName || req.query.courseName) as string | undefined;
+
+    if (sessionId) {
+      try {
+        const foundSession = await Session.findById(sessionId);
+        if (foundSession) {
+          if (!cleanTarget && foundSession.courseCode) {
+            cleanTarget = foundSession.courseCode.toUpperCase();
+            if (titleCourse === 'All_Classes') {
+              titleCourse = foundSession.courseCode.toUpperCase();
+            }
+          }
+          if (!resolvedCourseName && foundSession.courseName) resolvedCourseName = foundSession.courseName;
+        }
+      } catch {
+        // ignore
+      }
+    }
+
     const COURSE_NAMES: Record<string, string> = {
+      CIUAMJT1: 'Programming using C -Theory',
+      CIUAMJL1: 'Programming using C - Lab',
       CIUCMJT2: 'Operating Systems',
       CIUCMJT1: 'Relational Database Management System',
+      CIUCMJL1: 'Lab based on RDBMS',
       SECC13: 'DBMS (Database Management Systems)',
       VOCCILO03: 'Lab Based on Python',
+      VOCCIT03: 'Python Programming',
       CAUCMJT2: 'Principals of Operating Systems',
       HIUCAET1: 'Hindi Bhasha Aur Sahitya',
+      COUAMDT2: 'INTRODUCTION TO INDIAN TAX SYSTEM',
+      AECESUT1: 'Soft Skills',
+      BCA101: 'Fundamentals of Computer & IT',
+      BCA102: 'Programming in C',
+      CS301: 'Operating Systems',
+      CS302: 'Database Management Systems',
     };
 
-    let resolvedCourseName = (req.body?.courseName || req.query.courseName) as string | undefined;
     if (!resolvedCourseName && cleanTarget) {
       resolvedCourseName = COURSE_NAMES[cleanTarget];
     }
-    if (!resolvedCourseName) {
-      const anyRep = await AttendanceReport.findOne(cleanTarget ? { courseCode: { $regex: new RegExp(`^${cleanTarget}$`, 'i') } } : {}).sort({ sessionDate: -1 });
+    if (!resolvedCourseName && cleanTarget) {
+      const anyRep = await AttendanceReport.findOne({ courseCode: { $regex: new RegExp(`^${cleanTarget}$`, 'i') } }).sort({ sessionDate: -1 });
       if (anyRep && anyRep.courseName) resolvedCourseName = anyRep.courseName;
     }
     if (!resolvedCourseName) {
-      resolvedCourseName = cleanTarget ? `Class ${cleanTarget}` : 'All Classes';
+      resolvedCourseName = cleanTarget ? `Class ${cleanTarget}` : 'All Enrolled Classes';
     }
 
     const classHeader = cleanTarget && !resolvedCourseName.toUpperCase().includes(cleanTarget)

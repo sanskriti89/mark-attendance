@@ -322,7 +322,7 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   tapFallbackArea: {
-    ...StyleSheet.absoluteFillObject,
+    ...(StyleSheet.absoluteFill as any),
     backgroundColor: 'transparent',
   },
   trackFill: {
@@ -333,7 +333,7 @@ const styles = StyleSheet.create({
     borderRadius: 26,
   },
   textContainer: {
-    ...StyleSheet.absoluteFillObject,
+    ...(StyleSheet.absoluteFill as any),
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
