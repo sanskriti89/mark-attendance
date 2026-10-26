@@ -1131,32 +1131,18 @@ export const AuthScreen: React.FC = () => {
                 </View>
               </View>
 
-              {/* Field 6: Contact & Office */}
-              <View style={styles.twoColumnRow}>
-                <View style={[styles.fieldBlock, { flex: 1 }]}>
-                  <Text style={styles.fieldLabel}>Mobile Number</Text>
-                  <View style={styles.textInputCard}>
-                    <TextInput
-                      style={styles.textInputFilled}
-                      value={teacherPhone}
-                      onChangeText={setTeacherPhone}
-                      placeholder="e.g. 9876543210"
-                      placeholderTextColor={Colors.slate400}
-                      keyboardType="phone-pad"
-                    />
-                  </View>
-                </View>
-                <View style={[styles.fieldBlock, { flex: 1 }]}>
-                  <Text style={styles.fieldLabel}>Office Room</Text>
-                  <View style={styles.textInputCard}>
-                    <TextInput
-                      style={styles.textInputFilled}
-                      value={teacherOfficeRoom}
-                      onChangeText={setTeacherOfficeRoom}
-                      placeholder="e.g. Room FB-204"
-                      placeholderTextColor={Colors.slate400}
-                    />
-                  </View>
+              {/* Field 6: Mobile Number */}
+              <View style={styles.fieldBlock}>
+                <Text style={styles.fieldLabel}>Mobile Number</Text>
+                <View style={styles.textInputCard}>
+                  <TextInput
+                    style={styles.textInputFilled}
+                    value={teacherPhone}
+                    onChangeText={setTeacherPhone}
+                    placeholder="e.g. 9876543210"
+                    placeholderTextColor={Colors.slate400}
+                    keyboardType="phone-pad"
+                  />
                 </View>
               </View>
 
