@@ -1,16 +1,19 @@
 import { Platform } from 'react-native';
 
-// Dynamically resolve API URL based on browser origin (phone/web) or LAN IP
 export const getApiBaseUrl = () => {
   if (typeof window !== 'undefined' && window.location) {
     const loc = window.location;
-    if (loc.port === '5000' || !loc.port) {
-      return `${loc.origin}/api`;
+    if (loc.hostname === 'localhost' || loc.hostname === '127.0.0.1') {
+      if (loc.port === '5000' || !loc.port) {
+        return `${loc.origin}/api`;
+      }
+      return `${loc.protocol}//${loc.hostname}:5000/api`;
     }
-    // If running in development with Expo web dev server (e.g. port 8081 or 19006)
-    return `${loc.protocol}//${loc.hostname || 'localhost'}:5000/api`;
+    // Production web deployment (e.g. Vercel)
+    return `${loc.origin}/api`;
   }
-  return 'http://192.168.1.24:5000/api';
+  // Native mobile app (Android APK / iOS)
+  return 'https://mark-attendance-backend.onrender.com/api';
 };
 
 export const API_BASE_URL = getApiBaseUrl();
