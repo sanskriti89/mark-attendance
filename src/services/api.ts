@@ -141,18 +141,41 @@ export const api = {
         headers['Content-Type'] = 'application/json';
       }
 
-      // Send directly to Render backend to bypass Vercel 4.5MB serverless payload limit
+      // 90s timeout to allow Render free tier to wake up gracefully from cold sleep
       const ocrBaseUrl = 'https://mark-attendance-backend.onrender.com/api';
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 45000);
-      const res = await fetch(`${ocrBaseUrl}/auth/parse-pdf`, {
-        method: 'POST',
-        headers,
-        body,
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
-      return await res.json();
+      const timeoutId = setTimeout(() => controller.abort(), 90000);
+      try {
+        const res = await fetch(`${ocrBaseUrl}/auth/parse-pdf`, {
+          method: 'POST',
+          headers,
+          body,
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+        return await res.json();
+      } catch (primaryErr: any) {
+        clearTimeout(timeoutId);
+        // Fallback to local / configured base URL if different
+        const fallbackUrl = getApiBaseUrl();
+        if (fallbackUrl !== ocrBaseUrl) {
+          const fallbackCtrl = new AbortController();
+          const fallbackTimeout = setTimeout(() => fallbackCtrl.abort(), 30000);
+          try {
+            const fallbackRes = await fetch(`${fallbackUrl}/auth/parse-pdf`, {
+              method: 'POST',
+              headers,
+              body,
+              signal: fallbackCtrl.signal,
+            });
+            clearTimeout(fallbackTimeout);
+            return await fallbackRes.json();
+          } catch {
+            clearTimeout(fallbackTimeout);
+          }
+        }
+        throw primaryErr;
+      }
     } catch (e: any) {
       console.warn('[PDF API Error]', e.message);
       return {

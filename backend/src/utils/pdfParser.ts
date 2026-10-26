@@ -221,43 +221,102 @@ export const extractDetailsFromText = (rawText: string, isTeacherHint?: boolean)
 
   // 1. Enrollment Number Extraction
   let enrollmentNo = '';
-  const ggvDirectMatch = rawText.match(/\bGGV\/[A-Za-z0-9\/_-]+\b/i);
+  // Check GGV pattern with optional spaces around slashes e.g. "GGV / 24 / 09452", "GGV/25/08123", or "GGV/251/20045"
+  const ggvDirectMatch = rawText.match(/\bGGV\s*[\/\\]\s*[A-Za-z0-9_-]+\s*[\/\\]\s*[A-Za-z0-9_-]+(?:\s*[\/\\]\s*[A-Za-z0-9_-]+)?\b/i);
   if (ggvDirectMatch) {
-    enrollmentNo = ggvDirectMatch[0].trim().toUpperCase();
+    enrollmentNo = ggvDirectMatch[0].replace(/\s+/g, '').toUpperCase();
   } else {
+    // Check labeled enrollment or roll number (explicitly filter out false positive words like SLIP, FORM, CARD, SYSTEM)
     const enrLabelMatch = rawText.match(
-      /(?:Enrol+ment|Registration|Roll)\s*(?:Number|No)?[\s:.\-_|]+([A-Za-z0-9\/_-]+)/i
+      /(?:Enrol+ment|Registration|Roll)\s*(?:Number|No\.?)?[\s:.\-_|=]+([A-Za-z0-9\/_\- ]{4,30})/i
     );
     if (enrLabelMatch) {
-      enrollmentNo = enrLabelMatch[1].trim().toUpperCase();
+      const candidate = enrLabelMatch[1].trim();
+      if (!/^(SLIP|FORM|CARD|SYSTEM|PORTAL|DETAILS|NUMBER|NO|DATE|OF|THE|NAME)$/i.test(candidate)) {
+        const cleaned = candidate.split(/\s+/)[0].replace(/[^\w\/-]/g, '').toUpperCase();
+        if (cleaned.length >= 4) {
+          enrollmentNo = cleaned;
+        }
+      }
+    }
+  }
+
+  // Also check for separate line roll number if label was on previous line
+  const rawLines = rawText.split(/[\r\n]+/).map((l) => l.trim()).filter(Boolean);
+  if (!enrollmentNo) {
+    for (let i = 0; i < rawLines.length - 1; i++) {
+      if (/^(?:Enrol+ment\s*(?:No\.?|Number)?|Roll\s*(?:No\.?|Number)?)$/i.test(rawLines[i])) {
+        const next = rawLines[i + 1].replace(/\s+/g, '').toUpperCase();
+        if (/^(?:GGV\/)?\d{6,14}$/i.test(next) || /^GGV\/\d{2,3}\/\d{3,6}$/i.test(next)) {
+          enrollmentNo = next;
+          break;
+        }
+      }
     }
   }
 
   // 2. Name Extraction (Student slip + Faculty ID Card)
   let name = '';
-  const samarthNameMatch = rawText.match(
-    /\bName\b[\s:.\-_|]+([A-Z\s.]{3,40}?)(?=\s+(?:Programme|Program|Session|Reference|Category|Father))/i
-  );
-  if (samarthNameMatch) {
-    name = samarthNameMatch[1].trim().replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').toUpperCase();
-  } else {
-    const idCardNameMatch = rawText.match(
-      /(?:Faculty\s*Name|Teacher\s*Name|Employee\s*Name|Name\s*of\s*Cardholder|(?<![FfHhMm]\.\s*)(?<!Father'?s?\s*)(?<!Mother'?s?\s*)\bName\b)[\s:.\-_|=]+([A-Za-z\s.]{3,35})(?=\r|\n|$|\s+(?:Faculty|ID|Designation|Department|Email|Phone|Mobile|Office|Session|Cabin|Valid|Blood))/i
+
+  // Mask out Father's and Mother's name lines so they NEVER get picked up as the student's name
+  const textWithoutParents = rawText
+    .replace(/(?:Father|Mother|Parent|Guardian)(?:'s)?\s*(?:Name)?[\s:.\-_|=]+[^\r\n]+/gi, '')
+    .replace(/F\.?\s*Name[\s:.\-_|=]+[^\r\n]+/gi, '');
+
+  if (isTeacherDoc) {
+    const idCardNameMatch = textWithoutParents.match(
+      /(?:Faculty\s*Name|Teacher\s*Name|Employee\s*Name|Name\s*of\s*Cardholder|(?<![FfHhMm]\.\s*)(?<!Father'?s?\s*)(?<!Mother'?s?\s*)\bName\b)[\s:.\-_|=]+([A-Za-z .]{3,35})(?=\r|\n|$|\s+(?:Faculty|ID|Designation|Department|Email|Phone|Mobile|Office|Session|Cabin|Valid|Blood))/i
     );
     if (idCardNameMatch) {
-      name = idCardNameMatch[1].trim().replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ');
-    } else {
-      const genericNameMatch = rawText.match(
-        /(?:Student\s*Name|Name\s*of\s*(?:the\s*)?Student|Candidate(?:'s)?\s*Name)[\s:.\-_|]+([A-Za-z\s.]{3,40})/i
-      );
-      if (genericNameMatch) {
-        name = genericNameMatch[1].trim().replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').toUpperCase();
+      name = idCardNameMatch[1].trim();
+    }
+  }
+
+  // A. Explicit Student/Candidate Name label
+  if (!name) {
+    const explicitCandidateMatch = textWithoutParents.match(
+      /(?:Candidate(?:'s)?\s*Name|Student(?:'s)?\s*Name|Name\s*of\s*(?:the\s*)?(?:Candidate|Student|Applicant))[\s:.\-_|=]+([A-Za-z .]{2,40})/i
+    );
+    if (explicitCandidateMatch) {
+      name = explicitCandidateMatch[1].trim();
+    }
+  }
+
+  // B. Standard "Name:" on single line
+  if (!name) {
+    const plainNameMatch = textWithoutParents.match(
+      /(?<![A-Za-z])Name[\s:.\-_|=]+([A-Za-z .]{2,40})/i
+    );
+    if (plainNameMatch) {
+      const candidate = plainNameMatch[1].trim();
+      const firstLine = candidate.split(/[\r\n]+/)[0].trim();
+      if (!/^(?:of\s*Cardholder|of\s*University|Guru\s*Ghasidas|Examination|Registration|Details|Selection|Slip)$/i.test(firstLine)) {
+        name = firstLine;
+      }
+    }
+  }
+
+  // C. Multiline format: "Name" or "Candidate's Name" on one line, actual name on the next line
+  if (!name) {
+    for (let i = 0; i < rawLines.length - 1; i++) {
+      if (/^(?:Name|Candidate(?:'s)?\s*Name|Student(?:'s)?\s*Name)$/i.test(rawLines[i])) {
+        const next = rawLines[i + 1].trim();
+        if (/^[A-Za-z\s.]{3,40}$/.test(next) && !/^(?:Roll|Enrol|Father|Mother|Department|Programme|Program|Session|Term|Date|Slip|Examination|Registration)$/i.test(next)) {
+          name = next;
+          break;
+        }
       }
     }
   }
 
   if (name) {
-    name = name.replace(/\b(STUDENT|DETAILS|ENROLEMENT|ENROLLMENT|NUMBER|PROGRAMME|SESSION)\b/gi, '').trim();
+    name = name
+      .replace(/\b(STUDENT|DETAILS|ENROLEMENT|ENROLLMENT|NUMBER|NO|ROLL|PROGRAMME|PROGRAM|SESSION|SLIP)\b/gi, '')
+      .replace(/[.:\-–|=]+$/, '')
+      .replace(/^[.:\-–|=]+/, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toUpperCase();
   }
 
   // 3. Department Extraction
@@ -268,19 +327,19 @@ export const extractDetailsFromText = (rawText: string, isTeacherHint?: boolean)
     department = 'CSE';
   } else if (/INFORMATION\s*TECHNOLOGY|\bIT\b/i.test(rawText)) {
     department = 'IT';
-  } else if (/ELECTRONICS|\bECE\b/i.test(rawText)) {
-    department = 'ECE';
-  } else if (/MECHANICAL/i.test(rawText)) {
-    department = 'MECH';
   } else if (/CIVIL/i.test(rawText)) {
     department = 'CIVIL';
+  } else if (/MECHANICAL/i.test(rawText)) {
+    department = 'MECH';
+  } else if (/ELECTRONICS|\bECE\b/i.test(rawText)) {
+    department = 'ECE';
   } else if (/MATHEMATICS|MATH/i.test(rawText)) {
     department = 'MATH';
   } else if (/PHYSICS/i.test(rawText)) {
     department = 'PHYSICS';
   } else if (/MANAGEMENT|MBA|BBA/i.test(rawText)) {
     department = 'MGMT';
-  } else if (/COMMERCE/i.test(rawText)) {
+  } else if (/COMMERCE|B\.?COM/i.test(rawText)) {
     department = 'COMMERCE';
   } else if (/ZOOLOGY/i.test(rawText)) {
     department = 'ZOOLOGY';
@@ -290,6 +349,8 @@ export const extractDetailsFromText = (rawText: string, isTeacherHint?: boolean)
     department = 'BIOTECH';
   } else if (/PHARMACY/i.test(rawText)) {
     department = 'PHARMACY';
+  } else if (/LAW/i.test(rawText)) {
+    department = 'LAW';
   }
 
   // 4. Course Level & Dynamic Semester Detection
@@ -425,8 +486,6 @@ export const extractDetailsFromText = (rawText: string, isTeacherHint?: boolean)
     });
   };
 
-  const rawLines = rawText.split(/[\r\n]+/);
-
   // PASS 1: Detect Structured Table Rows (e.g. "1 COUAMDT2 INTRODUCTION TO INDIAN TAX SYSTEM 3.0 3 SEMESTER")
   for (const line of rawLines) {
     const trimmed = line.trim();
@@ -481,14 +540,15 @@ export const extractDetailsFromText = (rawText: string, isTeacherHint?: boolean)
       continue;
     }
 
-    // Pattern 1D: Code separated by colon or dash (e.g. "CIUCMJT1 - Relational Database Management System" or "SECC13: DBMS")
+    // Pattern 1D: Code separated by colon or dash (e.g. "CIUCMJT1 - Relational Database Management System" or "CE101: Engineering Mechanics 4.0")
     const colonDashMatch = trimmed.match(
-      /^\s*([A-Za-z0-9\-_]{4,14})\s*[:\-–]\s*([A-Za-z0-9 &.,\/'"()\-]{3,60})/i
+      /^\s*([A-Za-z0-9\-_]{4,14})\s*[:\-–]\s*([A-Za-z0-9 &.,\/'"()\-]+?)(?:\s+([\d.]+))?$/i
     );
     if (colonDashMatch) {
       const cCode = colonDashMatch[1];
       const cTitle = colonDashMatch[2];
-      addCourse(cCode, cTitle);
+      const cCr = colonDashMatch[3] ? parseFloat(colonDashMatch[3]) : undefined;
+      addCourse(cCode, cTitle, isNaN(cCr as any) ? undefined : cCr);
       continue;
     }
 

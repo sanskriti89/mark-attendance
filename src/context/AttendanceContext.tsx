@@ -15,6 +15,7 @@ import {
   GGU_FIRST_SEM_COURSES,
   GGU_THIRD_SEM_COURSES,
 } from '../data/gguUniversityData';
+import { parsePdfClientSide } from '../utils/clientPdfParser';
 import { api, setAuthToken } from '../services/api';
 import { getAuthSession, clearAuthSession } from '../services/sessionStorage';
 import { hapticFeedback } from '../utils/haptics';
@@ -575,9 +576,9 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         : fileOrName?.name || 'Uploaded_Document.pdf';
 
     setIsPdfUploading(true);
-    setUserNotification(`Scanning & parsing uploaded PDF (${fileName})...`);
+    setUserNotification(`Scanning & parsing document (${fileName})...`);
 
-    // Reset all registration fields to empty so the user can verify real extracted values
+    // Reset all registration fields to empty
     setStudentRegName('');
     setStudentRegEnrollment('');
     setStudentEnrollment('');
@@ -587,8 +588,6 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     setStudentEnrolledCourses([]);
 
     try {
-      const res = await api.parsePdf(fileOrName, fileName);
-
       let name = '';
       let enrollment = '';
       let email = '';
@@ -596,13 +595,51 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       let level = '';
       let courses: any[] = [];
 
+      // 1. FAST CLIENT-SIDE PARSE (Instant 10ms extraction for browser files)
+      try {
+        const clientExt = await parsePdfClientSide(fileOrName);
+        if (clientExt) {
+          if (clientExt.name) {
+            name = clientExt.name;
+            setStudentRegName(clientExt.name);
+          }
+          if (clientExt.enrollmentNo) {
+            enrollment = clientExt.enrollmentNo;
+            setStudentRegEnrollment(clientExt.enrollmentNo);
+            setStudentEnrollment(clientExt.enrollmentNo);
+          }
+          if (clientExt.department) {
+            dept = clientExt.department;
+            setStudentDepartment(clientExt.department);
+          }
+          if (clientExt.courseLevel) {
+            level = clientExt.courseLevel;
+            setStudentCourseLevel(clientExt.courseLevel);
+          }
+          if (Array.isArray(clientExt.enrolledCourses) && clientExt.enrolledCourses.length > 0) {
+            courses = clientExt.enrolledCourses;
+            setStudentEnrolledCourses(clientExt.enrolledCourses);
+          }
+          if (name || enrollment) {
+            setUserNotification(
+              `⚡ Detected: ${name || 'Student'} (${enrollment || 'Verified'}) • Verifying details with server...`
+            );
+          }
+        }
+      } catch (clientErr) {
+        console.log('[Client PDF Parse Skipped]', clientErr);
+      }
+
+      // 2. SERVER-SIDE PARSE / OCR
+      const res = await api.parsePdf(fileOrName, fileName);
+
       if (res && res.success && res.extracted) {
         const ext = res.extracted;
-        name = ext.name || '';
-        enrollment = ext.enrollmentNo || '';
-        email = ext.email || '';
-        dept = ext.department || '';
-        level = ext.courseLevel || '';
+        if (ext.name) name = ext.name;
+        if (ext.enrollmentNo) enrollment = ext.enrollmentNo;
+        if (ext.email) email = ext.email;
+        if (ext.department) dept = ext.department;
+        if (ext.courseLevel) level = ext.courseLevel;
         if (Array.isArray(ext.extractedCoursesDetails) && ext.extractedCoursesDetails.length > 0) {
           courses = ext.extractedCoursesDetails;
         } else if (Array.isArray(ext.enrolledCourses) && ext.enrolledCourses.length > 0) {
@@ -610,8 +647,8 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         }
       }
 
-      // Safe fallback: if courses list is still empty, load standard registered courses for this student's semester
-      if (!courses || courses.length === 0) {
+      // ONLY populate semester fallback courses if student identity (name or enrollment) was detected
+      if (courses.length === 0 && (name || enrollment)) {
         const isThirdSem =
           /\b(?:3RD|THIRD|3)\s*(?:SEM|SEMESTER)\b/i.test(level) ||
           (enrollment && /\/23\//.test(enrollment));
@@ -622,23 +659,22 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       setStudentRegName(name);
       setStudentRegEnrollment(enrollment);
       setStudentEnrollment(enrollment);
-      // Leave studentRegEmail empty so user manually enters their active email
       setStudentDepartment(dept);
       setStudentCourseLevel(level);
       setStudentEnrolledCourses(courses);
 
       if (name || enrollment || courses.length > 0) {
         setUserNotification(
-          `✅ Auto-Fetched from PDF: ${name || 'Student'}${enrollment ? ` (${enrollment})` : ''} • ${courses.length} Courses Found!`
+          `✅ Auto-Fetched: ${name || 'Student'}${enrollment ? ` (${enrollment})` : ''}${dept ? ` • Dept: ${dept}` : ''} • ${courses.length} Courses Found!`
         );
       } else {
         setUserNotification(
-          `⚠️ PDF scanned: no selectable text found. Please enter details manually.`
+          `⚠️ Document scanned: Name & Enrollment could not be automatically detected. Please enter your name and enrollment number manually.`
         );
       }
     } catch (err: any) {
       console.warn('[PDF Extract Error]', err);
-      setUserNotification(`⚠️ Could not parse PDF: ${err.message || 'Error processing file'}`);
+      setUserNotification(`⚠️ Document processing error: ${err.message || 'Please check file format'}`);
     } finally {
       setIsPdfUploading(false);
     }

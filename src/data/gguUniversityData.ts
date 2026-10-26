@@ -84,3 +84,15 @@ export const GGU_OFFICIAL_COURSE_SELECTIONS: GguSelectedCourse[] = [
   ...GGU_FIRST_SEM_COURSES,
   ...GGU_THIRD_SEM_COURSES,
 ];
+
+export const GGU_KNOWN_COURSES: Record<string, { name: string; credits: number; type: string; term: string }> =
+  GGU_OFFICIAL_COURSE_SELECTIONS.reduce((acc, curr) => {
+    acc[curr.courseCode.toUpperCase()] = {
+      name: curr.courseName,
+      credits: curr.credits,
+      type: curr.type,
+      term: curr.term,
+    };
+    return acc;
+  }, {} as Record<string, { name: string; credits: number; type: string; term: string }>);
+
