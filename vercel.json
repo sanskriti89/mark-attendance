@@ -1,15 +1,19 @@
 {
+  "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
-  "rewrites": [
+  "routes": [
     {
-      "source": "/api/(.*)",
-      "destination": "https://mark-attendance-backend.onrender.com/api/$1"
+      "src": "/api/(.*)",
+      "dest": "https://mark-attendance-backend.onrender.com/api/$1"
     },
     {
-      "source": "/((?!_expo|assets|favicon\\.ico|.*\\..*).*)",
-      "destination": "/index.html"
+      "handle": "filesystem"
+    },
+    {
+      "src": "/.*",
+      "dest": "/index.html"
     }
   ]
 }
