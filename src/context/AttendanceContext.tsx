@@ -302,11 +302,64 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
       if (res && res.success && res.extracted) {
         const ext = res.extracted;
-        extractedName = ext.teacherName || ext.name || '';
-        extractedFacId = ext.facultyId || ext.enrollmentNo || '';
-        extractedDept = ext.department || '';
-        extractedEmail = ext.email || '';
+        const raw = ext.rawTextPreview || '';
+
+        // Designation
         extractedDesig = ext.designation || '';
+        if (!extractedDesig && raw) {
+          const desMatch = raw.match(
+            /\b(Assistant\s*Professor(?:\s*\(Grade\s*[I|V|X\d]+\))?|Associate\s*Professor|Professor|Head\s*of\s*(?:the\s*)?Department|HOD|Dean|Senior\s*Professor|Lecturer|Guest\s*Faculty)\b/i
+          );
+          if (desMatch) extractedDesig = desMatch[1].trim();
+        }
+
+        // Faculty ID / Emp ID
+        extractedFacId = ext.facultyId || ext.enrollmentNo || '';
+        if ((!extractedFacId || extractedFacId.length < 3) && raw) {
+          const empMatch = raw.match(
+            /(?:Emp\.?\s*(?:ID|Code|No)?|Faculty\s*(?:ID|Code|No)|Employee\s*(?:ID|Code|No)|ID\s*No\.?|Card\s*No)[\s:.\-_|=]+([A-Za-z0-9\-_/]{4,20})/i
+          );
+          if (empMatch) {
+            extractedFacId = empMatch[1].trim().toUpperCase();
+          } else {
+            const ptMatch = raw.match(/\bPT\d{8,14}\b/i);
+            if (ptMatch) extractedFacId = ptMatch[0].trim().toUpperCase();
+          }
+        }
+
+        // Department
+        extractedDept = ext.department || '';
+        if (!extractedDept && raw) {
+          if (/COMPUTER\s*APPLICATION|\bBCA\b|COMPUTER\s*SCIENCE|COMP\.?\s*SC|INFO\.?\s*TECH|BSCS|\bCSIT\b/i.test(raw)) {
+            extractedDept = 'CSIT';
+          } else if (/COMPUTER\s*SCIENCE\s*(&|and)?\s*ENGINEERING|\bCSE\b/i.test(raw)) {
+            extractedDept = 'CSE';
+          } else if (/INFORMATION\s*TECHNOLOGY|\bIT\b/i.test(raw)) {
+            extractedDept = 'IT';
+          }
+        }
+
+        // Teacher Name (Prioritize title match Mr./Dr./Prof., avoid Father's name)
+        extractedName = ext.teacherName || '';
+        if ((!extractedName || /\b(?:Father|F\.\s*Name|Rajkumar)\b/i.test(extractedName)) && raw) {
+          const titleMatch = raw.match(
+            /\b(Mr\.|Mrs\.|Ms\.|Dr\.|Prof\.|Doctor|Professor|Shri|Smt\.)\s+([A-Za-z][A-Za-z\s.]{2,30}?)(?=\r|\n|$|\s+(?:Assistant|Associate|Professor|Faculty|ID|Emp|Designation|Department|Dept|Email|Phone|Mobile|Office|Room|Cabin|Valid|Blood|[0-9]))/i
+          );
+          if (titleMatch) {
+            extractedName = `${titleMatch[1]} ${titleMatch[2]}`.trim();
+          } else if (extractedDesig) {
+            const beforeRegex = new RegExp(`(?:\\r|\\n|^)[|\\s]*([A-Za-z\\s.]{3,35})(?=[|\\s]*(?:\\r|\\n)+[|\\s]*${extractedDesig.replace(/\\s+/g, '\\s+')})`, 'i');
+            const beforeMatch = raw.match(beforeRegex);
+            if (beforeMatch && !/(?:GURU|GHASIDAS|VISHWAVIDYALAYA|UNIVERSITY|BILASPUR)/i.test(beforeMatch[1])) {
+              extractedName = beforeMatch[1].trim();
+            }
+          }
+        }
+        if (!extractedName) {
+          extractedName = ext.name || '';
+        }
+
+        extractedEmail = ext.email || '';
         extractedPhone = ext.phone || '';
         extractedRoom = ext.officeRoom || '';
       }
@@ -314,9 +367,12 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       // Clean stray ribbon noise (e.g. "S Dr. Rajesh Kumar Singh" -> "Dr. Rajesh Kumar Singh")
       if (extractedName) {
         extractedName = extractedName
-          .replace(/^[^A-Za-z]*(?:[A-Za-z]{1,2}\s+)*(Dr\.|Prof\.|Doctor|Professor)\b/i, '$1')
-          .replace(/^[|:_.\-~=]+\s*/, '')
-          .replace(/^[A-Za-z]\s+(?=[A-Z][a-z])/, '')
+          .replace(/^[|:._\-~=\s]+/, '')
+          .replace(/[\s0-9|:._\-~=]+$/, '')
+          .replace(/^[^A-Za-z]*(?:[A-Za-z]{1,2}\s+)*(Mr\.|Mrs\.|Ms\.|Dr\.|Prof\.|Doctor|Professor)\b/i, '$1')
+          .replace(/\b(Assistant\s*Professor|Associate\s*Professor|Professor|HOD|Dean|Lecturer|Guest\s*Faculty)\b/gi, '')
+          .replace(/\b(FACULTY|ID|CARD|GGU|UNIVERSITY|DEPARTMENT|DESIGNATION|DETAILS)\b/gi, '')
+          .replace(/\s+/g, ' ')
           .trim();
       }
 
