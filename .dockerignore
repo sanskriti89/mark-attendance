@@ -1,0 +1,15 @@
+node_modules
+backend/node_modules
+.expo
+android
+.gradle
+.kotlin
+build
+dist
+backend/dist
+*.apk
+*.log
+.env
+backend/.env
+scratch
+.git
