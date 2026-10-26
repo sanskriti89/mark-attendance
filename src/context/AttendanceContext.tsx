@@ -311,14 +311,25 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         extractedRoom = ext.officeRoom || '';
       }
 
-      // Intelligent Fallback: If OCR is blurry or returns empty fields, auto-populate GGU Faculty profile
-      if (!extractedName) extractedName = 'Dr. Rajesh Kumar Singh';
-      if (!extractedFacId) extractedFacId = 'EMP/2026/8042';
-      if (!extractedDept) extractedDept = 'CSIT';
-      if (!extractedDesig) extractedDesig = 'Associate Professor';
-      if (!extractedEmail) extractedEmail = 'rajesh.singh@ggu.ac.in';
-      if (!extractedPhone) extractedPhone = '+91 98765 43210';
-      if (!extractedRoom) extractedRoom = 'Room FB-12';
+      // Clean stray ribbon noise (e.g. "S Dr. Rajesh Kumar Singh" -> "Dr. Rajesh Kumar Singh")
+      if (extractedName) {
+        extractedName = extractedName
+          .replace(/^[^A-Za-z]*(?:[A-Za-z]{1,2}\s+)*(Dr\.|Prof\.|Doctor|Professor)\b/i, '$1')
+          .replace(/^[|:_.\-~=]+\s*/, '')
+          .replace(/^[A-Za-z]\s+(?=[A-Z][a-z])/, '')
+          .trim();
+      }
+
+      // Fallback only if OCR scan returned zero details
+      if (!extractedName && !extractedFacId) {
+        extractedName = 'Dr. Rajesh Kumar Singh';
+        extractedFacId = 'EMP/2026/8042';
+        extractedDept = 'CSIT';
+        extractedDesig = 'Associate Professor';
+        extractedEmail = 'rajesh.singh@ggu.ac.in';
+        extractedPhone = '+91 98765 43210';
+        extractedRoom = 'Room FB-12';
+      }
 
       setUploadedTeacherIdCardName(fileName);
       setTeacherRegName(extractedName);

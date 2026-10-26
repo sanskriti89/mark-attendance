@@ -487,6 +487,65 @@ export const AuthScreen: React.FC = () => {
     navigateTo('DOC_VERIFICATION');
   };
 
+  const compressImageForFastOcr = async (file: any): Promise<any> => {
+    if (!file || typeof window === 'undefined') return file;
+    const isImage =
+      (file.type && file.type.startsWith('image/')) ||
+      (file.name && /\.(png|jpe?g|webp|bmp)$/i.test(file.name));
+    if (!isImage) return file;
+
+    return new Promise((resolve) => {
+      try {
+        const reader = new FileReader();
+        reader.onload = (e: any) => {
+          const img = new Image();
+          img.onload = () => {
+            const MAX_DIM = 1200;
+            let width = img.width;
+            let height = img.height;
+            if (width > MAX_DIM || height > MAX_DIM) {
+              if (width > height) {
+                height = Math.round((height * MAX_DIM) / width);
+                width = MAX_DIM;
+              } else {
+                width = Math.round((width * MAX_DIM) / height);
+                height = MAX_DIM;
+              }
+            }
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              ctx.drawImage(img, 0, 0, width, height);
+              canvas.toBlob(
+                (blob) => {
+                  if (blob) {
+                    const cleanName = (file.name || 'document.png').replace(/\.[^.]+$/, '.jpg');
+                    const compressed = new File([blob], cleanName, { type: 'image/jpeg' });
+                    resolve(compressed);
+                  } else {
+                    resolve(file);
+                  }
+                },
+                'image/jpeg',
+                0.85
+              );
+            } else {
+              resolve(file);
+            }
+          };
+          img.onerror = () => resolve(file);
+          img.src = e.target.result;
+        };
+        reader.onerror = () => resolve(file);
+        reader.readAsDataURL(file);
+      } catch {
+        resolve(file);
+      }
+    });
+  };
+
   const handleBrowsePdf = async () => {
     try {
       if (Platform.OS === 'web' && typeof document !== 'undefined') {
@@ -498,7 +557,8 @@ export const AuthScreen: React.FC = () => {
         input.onchange = async (e: any) => {
           const file = e.target?.files?.[0];
           if (file) {
-            await uploadAndExtractPdf(file);
+            const optimized = await compressImageForFastOcr(file);
+            await uploadAndExtractPdf(optimized);
           }
           document.body.removeChild(input);
         };
@@ -532,7 +592,8 @@ export const AuthScreen: React.FC = () => {
         input.onchange = async (e: any) => {
           const file = e.target?.files?.[0];
           if (file) {
-            await uploadAndExtractTeacherIdCard(file);
+            const optimized = await compressImageForFastOcr(file);
+            await uploadAndExtractTeacherIdCard(optimized);
           }
           document.body.removeChild(input);
         };
@@ -566,7 +627,8 @@ export const AuthScreen: React.FC = () => {
         input.onchange = async (e: any) => {
           const file = e.target?.files?.[0];
           if (file) {
-            await uploadAndExtractTeacherTimetable(file);
+            const optimized = await compressImageForFastOcr(file);
+            await uploadAndExtractTeacherTimetable(optimized);
           }
           document.body.removeChild(input);
         };

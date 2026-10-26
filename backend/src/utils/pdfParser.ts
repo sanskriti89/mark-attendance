@@ -468,25 +468,25 @@ export const extractDetailsFromText = (rawText: string): ExtractedStudentDetails
 
   // --- Teacher-Specific Profile Extraction ---
   let facultyId = '';
-  const facIdDirectMatch = rawText.match(/\b(?:FAC|EMP|GGU[-_]?FAC)[-_/][A-Za-z0-9\-_/]+\b/i);
+  const facIdDirectMatch = rawText.match(/\b(?:GGV\/|GGU\/)?(?:FAC|EMP|GGU[-_]?FAC)[-_/][A-Za-z0-9\-_/]+\b/i);
   if (facIdDirectMatch) {
     facultyId = facIdDirectMatch[0].trim().toUpperCase();
   } else {
     const facLabelMatch = rawText.match(
-      /(?:Faculty\s*(?:ID|Code|No)|Emp(?:loyee)?\s*(?:ID|Code|No)|Teacher\s*ID|ID\s*No\.?)[\s:.\-_|=]+([A-Za-z0-9\-_/]+)/i
+      /(?:Faculty\s*(?:ID|Code|No)|Emp(?:loyee)?\s*(?:ID|Code|No)|Teacher\s*ID|ID\s*No\.?|Card\s*No)[\s:.\-_|=]+([A-Za-z0-9\-_/]+)/i
     );
-    if (facLabelMatch && !/^(FACULTY|CARD|SMART)$/i.test(facLabelMatch[1])) {
+    if (facLabelMatch && !/^(FACULTY|CARD|SMART|UNIVERSITY)$/i.test(facLabelMatch[1])) {
       facultyId = facLabelMatch[1].trim().toUpperCase();
     }
   }
 
   let teacherName = '';
-  const drProfMatch = rawText.match(/\b(?:Dr\.|Prof\.|Doctor|Professor)\s+([A-Za-z\s.]{3,35})(?=\r|\n|$|\s+(?:Faculty|ID|Designation|Department|Email|Phone|Mobile|Office|Room|Cabin))/i);
+  const drProfMatch = rawText.match(/\b(?:Dr\.|Prof\.|Doctor|Professor)\s+([A-Za-z\s.]{3,35})(?=\r|\n|$|\s+(?:Faculty|ID|Designation|Department|Email|Phone|Mobile|Office|Room|Cabin|Valid|Blood))/i);
   if (drProfMatch) {
     teacherName = drProfMatch[0].trim().replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ');
   } else {
     const teacherNameLabel = rawText.match(
-      /(?:Faculty\s*Name|Teacher\s*Name|Employee\s*Name|Name\s*of\s*Faculty|Name|Candidate'?s?\s*Name)[\s:.\-_|=]+([A-Za-z\s.]{3,35})(?=\r|\n|$|\s+(?:Faculty|ID|Designation|Department|Email|Phone|Mobile|Office|Session|Cabin))/i
+      /(?:Faculty\s*Name|Teacher\s*Name|Employee\s*Name|Name\s*of\s*Faculty|Name|Candidate'?s?\s*Name)[\s:.\-_|=]+([A-Za-z\s.]{3,35})(?=\r|\n|$|\s+(?:Faculty|ID|Designation|Department|Email|Phone|Mobile|Office|Session|Cabin|Valid|Blood))/i
     );
     if (teacherNameLabel) {
       teacherName = teacherNameLabel[1].trim().replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ');
@@ -496,7 +496,13 @@ export const extractDetailsFromText = (rawText: string): ExtractedStudentDetails
   }
 
   if (teacherName) {
-    teacherName = teacherName.replace(/\b(FACULTY|ID|CARD|GGU|UNIVERSITY|DEPARTMENT|DESIGNATION|DETAILS)\b/gi, '').trim();
+    teacherName = teacherName
+      .replace(/^[^A-Za-z]*(?:[A-Za-z]{1,2}\s+)*(Dr\.|Prof\.|Doctor|Professor)\b/i, '$1')
+      .replace(/^[|:_.\-~=]+\s*/, '')
+      .replace(/^[A-Za-z]\s+(?=[A-Z][a-z])/, '')
+      .replace(/\b(FACULTY|ID|CARD|GGU|UNIVERSITY|DEPARTMENT|DESIGNATION|DETAILS)\b/gi, '')
+      .replace(/\s+/g, ' ')
+      .trim();
   }
 
   let designation = '';
