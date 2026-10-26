@@ -141,10 +141,11 @@ export const api = {
         headers['Content-Type'] = 'application/json';
       }
 
-      const baseUrl = getApiBaseUrl();
+      // Send directly to Render backend to bypass Vercel 4.5MB serverless payload limit
+      const ocrBaseUrl = 'https://mark-attendance-backend.onrender.com/api';
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 45000);
-      const res = await fetch(`${baseUrl}/auth/parse-pdf`, {
+      const res = await fetch(`${ocrBaseUrl}/auth/parse-pdf`, {
         method: 'POST',
         headers,
         body,

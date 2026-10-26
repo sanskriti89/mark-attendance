@@ -320,8 +320,9 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           .trim();
       }
 
-      // Fallback only if OCR scan returned zero details
-      if (!extractedName && !extractedFacId) {
+      // Only use sample demo profile if user specifically clicked the demo preset
+      const isDemoSample = !fileOrName || fileName === 'GGU_Faculty_ID_Card.png';
+      if (isDemoSample && !extractedName && !extractedFacId) {
         extractedName = 'Dr. Rajesh Kumar Singh';
         extractedFacId = 'EMP/2026/8042';
         extractedDept = 'CSIT';
@@ -332,27 +333,23 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       }
 
       setUploadedTeacherIdCardName(fileName);
-      setTeacherRegName(extractedName);
-      setTeacherRegFacultyId(extractedFacId);
-      setTeacherDepartment(extractedDept);
-      setTeacherDesignation(extractedDesig);
-      setTeacherRegEmail(extractedEmail);
-      setTeacherPhone(extractedPhone);
-      setTeacherOfficeRoom(extractedRoom);
+      if (extractedName) setTeacherRegName(extractedName);
+      if (extractedFacId) setTeacherRegFacultyId(extractedFacId);
+      if (extractedDept) setTeacherDepartment(extractedDept);
+      if (extractedDesig) setTeacherDesignation(extractedDesig);
+      if (extractedEmail) setTeacherRegEmail(extractedEmail);
+      if (extractedPhone) setTeacherPhone(extractedPhone);
+      if (extractedRoom) setTeacherOfficeRoom(extractedRoom);
 
-      setUserNotification(`✅ ID Card Verified: Details for ${extractedName} (${extractedFacId}) auto-filled!`);
+      if (extractedName || extractedFacId) {
+        setUserNotification(`✅ ID Card Verified: Details for ${extractedName || extractedFacId} auto-filled!`);
+      } else {
+        setUserNotification(`✅ ID Card (${fileName}) uploaded! Please verify or enter your details below.`);
+      }
     } catch (err: any) {
       console.warn('Teacher ID extraction error:', err);
-      // Fallback on timeout or network error so teacher registration is NEVER blocked
       setUploadedTeacherIdCardName(fileName);
-      setTeacherRegName('Dr. Rajesh Kumar Singh');
-      setTeacherRegFacultyId('EMP/2026/8042');
-      setTeacherDepartment('CSIT');
-      setTeacherDesignation('Associate Professor');
-      setTeacherRegEmail('rajesh.singh@ggu.ac.in');
-      setTeacherPhone('+91 98765 43210');
-      setTeacherOfficeRoom('Room FB-12');
-      setUserNotification(`✅ ID Card Verified: Details for Dr. Rajesh Kumar Singh (EMP/2026/8042) auto-filled!`);
+      setUserNotification(`✅ ID Card (${fileName}) uploaded! Please verify or enter your details below.`);
     } finally {
       setIsTeacherIdCardUploading(false);
     }

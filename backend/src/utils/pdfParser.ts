@@ -187,7 +187,7 @@ export const extractDetailsFromText = (rawText: string): ExtractedStudentDetails
     }
   }
 
-  // 2. Student Name Extraction
+  // 2. Name Extraction (Student slip + Faculty ID Card)
   let name = '';
   const samarthNameMatch = rawText.match(
     /\bName\b[\s:.\-_|]+([A-Z\s.]{3,40}?)(?=\s+(?:Programme|Program|Session|Reference|Category|Father))/i
@@ -195,11 +195,18 @@ export const extractDetailsFromText = (rawText: string): ExtractedStudentDetails
   if (samarthNameMatch) {
     name = samarthNameMatch[1].trim().replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').toUpperCase();
   } else {
-    const genericNameMatch = rawText.match(
-      /(?:Student\s*Name|Name\s*of\s*(?:the\s*)?Student|Candidate(?:'s)?\s*Name)[\s:.\-_|]+([A-Za-z\s.]{3,40})/i
+    const idCardNameMatch = rawText.match(
+      /(?:Faculty\s*Name|Teacher\s*Name|Employee\s*Name|Name\s*of\s*Cardholder|Name)[\s:.\-_|=]+([A-Za-z\s.]{3,35})(?=\r|\n|$|\s+(?:Faculty|ID|Designation|Department|Email|Phone|Mobile|Office|Session|Cabin|Valid|Blood))/i
     );
-    if (genericNameMatch) {
-      name = genericNameMatch[1].trim().replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').toUpperCase();
+    if (idCardNameMatch) {
+      name = idCardNameMatch[1].trim().replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ');
+    } else {
+      const genericNameMatch = rawText.match(
+        /(?:Student\s*Name|Name\s*of\s*(?:the\s*)?Student|Candidate(?:'s)?\s*Name)[\s:.\-_|]+([A-Za-z\s.]{3,40})/i
+      );
+      if (genericNameMatch) {
+        name = genericNameMatch[1].trim().replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').toUpperCase();
+      }
     }
   }
 
@@ -551,9 +558,9 @@ export const extractDetailsFromText = (rawText: string): ExtractedStudentDetails
     enrolledCourses,
     extractedCoursesDetails,
     rawTextPreview: rawText.slice(0, 300),
-    teacherName: teacherName || name || (rawText.length > 0 ? 'Dr. Rajesh Kumar Singh' : ''),
-    facultyId: facultyId || enrollmentNo || (rawText.length > 0 ? 'EMP/2026/8042' : ''),
-    designation: designation || (rawText.length > 0 ? 'Associate Professor' : ''),
+    teacherName: teacherName || name || '',
+    facultyId: facultyId || enrollmentNo || '',
+    designation: designation || '',
     phone,
     officeRoom,
   };
