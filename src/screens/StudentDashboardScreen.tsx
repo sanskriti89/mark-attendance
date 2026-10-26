@@ -257,20 +257,12 @@ export const StudentDashboardScreen: React.FC = () => {
           </View>
         </View>
 
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <TouchableOpacity
-            style={styles.avatarBtn}
-            onPress={() => setIsProfileSheetOpen(true)}
-          >
-            <MaterialIcons name="person" size={20} color={Colors.white} />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.headerLogoutBtn}
-            onPress={signOut}
-          >
-            <MaterialIcons name="logout" size={18} color="#DC2626" />
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity
+          style={styles.avatarBtn}
+          onPress={() => setIsProfileSheetOpen(true)}
+        >
+          <MaterialIcons name="person" size={20} color={Colors.white} />
+        </TouchableOpacity>
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
@@ -462,16 +454,6 @@ export const StudentDashboardScreen: React.FC = () => {
             ))
           )}
         </View>
-
-        {/* Bottom Sign Out Button */}
-        <TouchableOpacity
-          style={styles.bottomSignOutBtn}
-          onPress={signOut}
-          activeOpacity={0.8}
-        >
-          <MaterialIcons name="logout" size={20} color="#DC2626" />
-          <Text style={styles.bottomSignOutBtnText}>Sign Out from Student Portal</Text>
-        </TouchableOpacity>
       </ScrollView>
     </View>
   );
@@ -523,32 +505,6 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.studentTeal,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  headerLogoutBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#FEE2E2',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  bottomSignOutBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: '#FEF2F2',
-    borderColor: '#FECACA',
-    borderWidth: 1.5,
-    paddingVertical: 14,
-    borderRadius: 14,
-    marginTop: 6,
-    marginBottom: 20,
-  },
-  bottomSignOutBtnText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#DC2626',
   },
   scrollContent: {
     padding: 18,

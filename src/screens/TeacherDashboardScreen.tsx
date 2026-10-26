@@ -87,13 +87,6 @@ export const TeacherDashboardScreen: React.FC = () => {
           >
             <MaterialIcons name="person" size={20} color={Colors.white} />
           </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.avatarBtn, { backgroundColor: '#FEE2E2' }]}
-            onPress={signOut}
-          >
-            <MaterialIcons name="logout" size={18} color="#DC2626" />
-          </TouchableOpacity>
         </View>
       </View>
 
