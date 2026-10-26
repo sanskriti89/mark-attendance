@@ -1,14 +1,14 @@
 {
+  "framework": null,
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
-  "cleanUrls": true,
   "rewrites": [
     {
       "source": "/api/(.*)",
       "destination": "https://mark-attendance-backend.onrender.com/api/$1"
     },
     {
-      "source": "/(.*)",
+      "source": "/((?!_expo|assets|favicon\\.ico|.*\\..*).*)",
       "destination": "/index.html"
     }
   ]
