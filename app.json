@@ -7,11 +7,22 @@
     "userInterfaceStyle": "light",
     "icon": "./assets/icon.png",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.attendiq.app",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "AttendIQ requires campus GPS location to verify student attendance.",
+        "NSPhotoLibraryUsageDescription": "AttendIQ requires document and photo access to verify course selection slips and teacher ID cards."
+      }
     },
     "android": {
       "package": "com.attendiq.app",
       "usesCleartextTraffic": true,
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0F172A"
