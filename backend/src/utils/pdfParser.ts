@@ -29,6 +29,8 @@ export interface ExtractedStudentDetails {
 export const KNOWN_GGU_COURSES: Record<string, { name: string; credits: number; type: string; term?: string }> = {
   COUAMDT2: { name: 'INTRODUCTION TO INDIAN TAX SYSTEM', credits: 3.0, type: 'MDC', term: '3 SEMESTER' },
   SECC13: { name: 'DBMS (Database Management Systems)', credits: 3.0, type: 'SEC', term: '3 SEMESTER' },
+  CIUAMJT1: { name: 'Programming using C -Theory', credits: 3.0, type: 'Major', term: '1ST SEMESTER' },
+  CIUAMJL1: { name: 'Programming using C - Lab', credits: 1.0, type: 'Major Lab', term: '1ST SEMESTER' },
   CIUCMJT1: { name: 'Relational Database Management System', credits: 3.0, type: 'Major', term: '3 SEMESTER' },
   CIUCMJL1: { name: 'Lab based on RDBMS', credits: 1.0, type: 'Major', term: '3 SEMESTER' },
   CIUCMJT2: { name: 'Operating Systems', credits: 4.0, type: 'Major', term: '3 SEMESTER' },
@@ -445,6 +447,41 @@ export const extractDetailsFromText = (rawText: string): ExtractedStudentDetails
       addCourse(cCode, cTitle);
       continue;
     }
+
+    // Pattern 1E: Universal Timetable / Course Row (e.g. "Major ~~ CIUAMJT1 Programming using C -Theory 3")
+    const rowTokens = trimmed.split(/[|\t\s~–—]+/).filter(Boolean);
+    const codeTokenIdx = rowTokens.findIndex((t) => /^[A-Za-z]{2,8}\w*\d\w*$/i.test(t) && t.length >= 4 && t.length <= 14);
+    if (codeTokenIdx !== -1) {
+      const cCode = rowTokens[codeTokenIdx].toUpperCase();
+      if (!excludedTokens.has(cCode)) {
+        const beforeTokens = rowTokens.slice(0, codeTokenIdx);
+        let titleTokens = rowTokens.slice(codeTokenIdx + 1);
+        if (titleTokens.length > 0) {
+          let cCredits: number | undefined = undefined;
+          let cType = beforeTokens.find((t) => /^(Major|Minor|MDC|SEC|VAC|AEC|Core|Elective)$/i.test(t));
+          for (let i = 0; i < 4 && titleTokens.length > 0; i++) {
+            const last = titleTokens[titleTokens.length - 1];
+            if (/^[1-8]\s*SEMESTER$/i.test(last) || /^(?:UG|PG|NEP|CBCS)$/i.test(last)) {
+              titleTokens.pop();
+            } else if (titleTokens.length >= 2 && /SEMESTER/i.test(last) && /^[1-8]$/.test(titleTokens[titleTokens.length - 2])) {
+              titleTokens.pop();
+              titleTokens.pop();
+            } else if (!cType && /^(Major|Minor|MDC|SEC|VAC|AEC|Core|Elective|Audit)$/i.test(last)) {
+              cType = titleTokens.pop();
+            } else if (cCredits === undefined && /^\d+(?:\.\d+)?$/.test(last) && parseFloat(last) <= 10) {
+              cCredits = parseFloat(titleTokens.pop() || '0');
+            } else {
+              break;
+            }
+          }
+          const cTitle = titleTokens.join(' ').replace(/^[.:\-–~| ]+/, '').replace(/[.:\-–~| ]+$/, '').trim();
+          if (cTitle.length >= 3 && !/^(?:Course\s*Title|Credits|Course\s*Code|Course)$/i.test(cTitle)) {
+            addCourse(cCode, cTitle, cCredits, cType);
+            continue;
+          }
+        }
+      }
+    }
   }
 
   // PASS 2: Known GGU Course Dictionary Scan across rawText
@@ -553,8 +590,12 @@ export const extractDetailsFromText = (rawText: string): ExtractedStudentDetails
     officeRoom = roomMatch[1].trim();
   }
 
-  const isTeacherCard = !!(teacherName || designation || (facultyId && !enrollmentNo));
-  if (isTeacherCard) {
+  // Check if rawText contains an actual timetable or course selection table
+  const hasCourseTable = /(?:Course\s*Code|Course\s*Title|Credits|Timetable|Workload|Schedule|Theory|Lab|Major|Minor|MDC|SEC|VAC)/i.test(rawText) &&
+    extractedCoursesDetails.length > 0;
+
+  const isTeacherIdCard = !hasCourseTable && !!(teacherName || designation || (facultyId && !enrollmentNo));
+  if (isTeacherIdCard) {
     enrolledCourses.length = 0;
     extractedCoursesDetails.length = 0;
     email = '';

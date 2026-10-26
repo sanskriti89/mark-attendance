@@ -56,8 +56,10 @@ export const GGU_SCHOOLS: GguSchool[] = [
 export const ALL_GGU_DEPARTMENTS: GguDepartment[] = GGU_SCHOOLS.flatMap((s) => s.departments);
 
 export const GGU_OFFICIAL_COURSE_SELECTIONS: GguSelectedCourse[] = [
-  { sNo: 1, courseCode: 'COUAMDT2', courseName: 'INTRODUCTION TO INDIAN TAX SYSTEM', credits: 3.0, term: '3 SEMESTER', type: 'MDC' },
-  { sNo: 2, courseCode: 'SECC13', courseName: 'DBMS', credits: 3.0, term: '3 SEMESTER', type: 'SEC' },
+  { sNo: 1, courseCode: 'CIUAMJT1', courseName: 'Programming using C -Theory', credits: 3.0, term: '1ST SEMESTER', type: 'Major' },
+  { sNo: 2, courseCode: 'CIUAMJL1', courseName: 'Programming using C - Lab', credits: 1.0, term: '1ST SEMESTER', type: 'Major Lab' },
+  { sNo: 3, courseCode: 'COUAMDT2', courseName: 'INTRODUCTION TO INDIAN TAX SYSTEM', credits: 3.0, term: '3 SEMESTER', type: 'MDC' },
+  { sNo: 4, courseCode: 'SECC13', courseName: 'DBMS', credits: 3.0, term: '3 SEMESTER', type: 'SEC' },
   { sNo: 3, courseCode: 'CIUCMJT1', courseName: 'Relational Database Management System', credits: 3.0, term: '3 SEMESTER', type: 'Major' },
   { sNo: 4, courseCode: 'CIUCMJL1', courseName: 'Lab based on RDBMS', credits: 1.0, term: '3 SEMESTER', type: 'Major' },
   { sNo: 5, courseCode: 'CIUCMJT2', courseName: 'Operating Systems', credits: 4.0, term: '3 SEMESTER', type: 'Major' },
