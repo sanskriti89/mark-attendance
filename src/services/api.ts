@@ -143,7 +143,7 @@ export const api = {
 
       const baseUrl = getApiBaseUrl();
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 25000);
+      const timeoutId = setTimeout(() => controller.abort(), 45000);
       const res = await fetch(`${baseUrl}/auth/parse-pdf`, {
         method: 'POST',
         headers,
