@@ -27,16 +27,33 @@ export interface ExtractedStudentDetails {
 }
 
 export const KNOWN_GGU_COURSES: Record<string, { name: string; credits: number; type: string; term?: string }> = {
-  COUAMDT2: { name: 'INTRODUCTION TO INDIAN TAX SYSTEM', credits: 3.0, type: 'MDC', term: '3 SEMESTER' },
-  SECC13: { name: 'DBMS (Database Management Systems)', credits: 3.0, type: 'SEC', term: '3 SEMESTER' },
+  // 1st Semester GGU Courses (NEP 2020)
   CIUAMJT1: { name: 'Programming using C -Theory', credits: 3.0, type: 'Major', term: '1ST SEMESTER' },
   CIUAMJL1: { name: 'Programming using C - Lab', credits: 1.0, type: 'Major Lab', term: '1ST SEMESTER' },
+  PLUAMNT1: { name: 'Basic Circuit Theory & Network Analysis', credits: 3.0, type: 'Minor', term: '1ST SEMESTER' },
+  PLUAMNL1: { name: 'Basic Circuit Theory & Network Analysis Lab', credits: 1.0, type: 'Minor Lab', term: '1ST SEMESTER' },
+  ESUAAET1: { name: 'English Communication', credits: 2.0, type: 'AEC', term: '1ST SEMESTER' },
+  MDCEDT2: { name: 'Guidance and Counselling', credits: 3.0, type: 'MDC', term: '1ST SEMESTER' },
+  SECMS01: { name: 'Basics of Communication Skills', credits: 3.0, type: 'SEC', term: '1ST SEMESTER' },
+  VACCIO1: { name: 'Cyber Education and Awareness', credits: 2.0, type: 'VAC', term: '1ST SEMESTER' },
+  VACCIO01: { name: 'Cyber Education and Awareness', credits: 2.0, type: 'VAC', term: '1ST SEMESTER' },
+  VACLW01: { name: 'Constitutional values under Indian Constitution', credits: 2.0, type: 'VAC', term: '1ST SEMESTER' },
+  VCLW01: { name: 'Constitutional values under Indian Constitution', credits: 2.0, type: 'VAC', term: '1ST SEMESTER' },
+  HIUCAET1: { name: 'Hindi Bhasha Aur Sahitya', credits: 2.0, type: 'AEC', term: '1ST SEMESTER' },
+
+  // 3rd Semester GGU Courses (NEP 2020)
+  COUAMDT2: { name: 'INTRODUCTION TO INDIAN TAX SYSTEM', credits: 3.0, type: 'MDC', term: '3 SEMESTER' },
+  SECC13: { name: 'DBMS (Database Management Systems)', credits: 3.0, type: 'SEC', term: '3 SEMESTER' },
   CIUCMJT1: { name: 'Relational Database Management System', credits: 3.0, type: 'Major', term: '3 SEMESTER' },
-  CIUCMJL1: { name: 'Lab based on RDBMS', credits: 1.0, type: 'Major', term: '3 SEMESTER' },
+  CIUCMJL1: { name: 'Lab based on RDBMS', credits: 1.0, type: 'Major Lab', term: '3 SEMESTER' },
   CIUCMJT2: { name: 'Operating Systems', credits: 4.0, type: 'Major', term: '3 SEMESTER' },
+  CAUCMJT2: { name: 'Principals of Operating Systems', credits: 4.0, type: 'Major', term: '3 SEMESTER' },
   AECESUT1: { name: 'Soft Skills', credits: 2.0, type: 'AEC', term: '3 SEMESTER' },
   VOCCIT03: { name: 'Python Programming', credits: 1.0, type: 'VAC', term: '3 SEMESTER' },
   VOCCIL03: { name: 'Lab Based on Python', credits: 3.0, type: 'VAC', term: '3 SEMESTER' },
+  VOCCILO03: { name: 'Lab Based on Python', credits: 3.0, type: 'VAC', term: '3 SEMESTER' },
+
+  // Core CS/IT courses
   CS301: { name: 'Operating Systems', credits: 4.0, type: 'Core', term: '3 SEMESTER' },
   CS302: { name: 'Database Management Systems', credits: 4.0, type: 'Core', term: '3 SEMESTER' },
   CS303: { name: 'Computer Networks', credits: 4.0, type: 'Core', term: '3 SEMESTER' },
@@ -49,6 +66,32 @@ export const KNOWN_GGU_COURSES: Record<string, { name: string; credits: number; 
   BCA201: { name: 'Data Structures using C', credits: 4.0, type: 'Core', term: '2 SEMESTER' },
   BCA301: { name: 'Operating Systems', credits: 4.0, type: 'Core', term: '3 SEMESTER' },
   BCA302: { name: 'Database Management Systems', credits: 4.0, type: 'Core', term: '3 SEMESTER' },
+};
+
+export const STANDARD_GGU_SEMESTER_COURSES: Record<string, ExtractedCourse[]> = {
+  '1ST SEMESTER': [
+    { sNo: 1, courseCode: 'CIUAMJT1', courseName: 'Programming using C -Theory', credits: 3.0, type: 'Major', term: '1ST SEMESTER' },
+    { sNo: 2, courseCode: 'CIUAMJL1', courseName: 'Programming using C - Lab', credits: 1.0, type: 'Major Lab', term: '1ST SEMESTER' },
+    { sNo: 3, courseCode: 'PLUAMNT1', courseName: 'Basic Circuit Theory & Network Analysis', credits: 3.0, type: 'Minor', term: '1ST SEMESTER' },
+    { sNo: 4, courseCode: 'PLUAMNL1', courseName: 'Basic Circuit Theory & Network Analysis Lab', credits: 1.0, type: 'Minor Lab', term: '1ST SEMESTER' },
+    { sNo: 5, courseCode: 'ESUAAET1', courseName: 'English Communication', credits: 2.0, type: 'AEC', term: '1ST SEMESTER' },
+    { sNo: 6, courseCode: 'MDCEDT2', courseName: 'Guidance and Counselling', credits: 3.0, type: 'MDC', term: '1ST SEMESTER' },
+    { sNo: 7, courseCode: 'SECMS01', courseName: 'Basics of Communication Skills', credits: 3.0, type: 'SEC', term: '1ST SEMESTER' },
+    { sNo: 8, courseCode: 'VACCIO1', courseName: 'Cyber Education and Awareness', credits: 2.0, type: 'VAC', term: '1ST SEMESTER' },
+    { sNo: 9, courseCode: 'VACLW01', courseName: 'Constitutional values under Indian Constitution', credits: 2.0, type: 'VAC', term: '1ST SEMESTER' },
+  ],
+  '3RD SEMESTER': [
+    { sNo: 1, courseCode: 'CIUCMJT1', courseName: 'Relational Database Management System', credits: 3.0, type: 'Major', term: '3RD SEMESTER' },
+    { sNo: 2, courseCode: 'CIUCMJL1', courseName: 'Lab based on RDBMS', credits: 1.0, type: 'Major Lab', term: '3RD SEMESTER' },
+    { sNo: 3, courseCode: 'CIUCMJT2', courseName: 'Operating Systems', credits: 4.0, type: 'Major', term: '3RD SEMESTER' },
+    { sNo: 4, courseCode: 'COUAMDT2', courseName: 'INTRODUCTION TO INDIAN TAX SYSTEM', credits: 3.0, type: 'MDC', term: '3RD SEMESTER' },
+    { sNo: 5, courseCode: 'SECC13', courseName: 'DBMS (Database Management Systems)', credits: 3.0, type: 'SEC', term: '3RD SEMESTER' },
+    { sNo: 6, courseCode: 'AECESUT1', courseName: 'Soft Skills', credits: 2.0, type: 'AEC', term: '3RD SEMESTER' },
+    { sNo: 7, courseCode: 'VOCCIL03', courseName: 'Lab Based on Python', credits: 3.0, type: 'VAC', term: '3RD SEMESTER' },
+    { sNo: 8, courseCode: 'VOCCIT03', courseName: 'Python Programming', credits: 1.0, type: 'VAC', term: '3RD SEMESTER' },
+    { sNo: 9, courseCode: 'HIUCAET1', courseName: 'Hindi Bhasha Aur Sahitya', credits: 2.0, type: 'AEC', term: '3RD SEMESTER' },
+    { sNo: 10, courseCode: 'CAUCMJT2', courseName: 'Principals of Operating Systems', credits: 4.0, type: 'Major', term: '3RD SEMESTER' },
+  ],
 };
 
 // Helper to extract embedded JPEG images from a scanned PDF buffer
@@ -158,10 +201,11 @@ export const parsePdfBuffer = async (buffer: Buffer, fileName: string = ''): Pro
   console.log(rawText.slice(0, 1000));
   console.log('--- [PDF/OCR Raw Text End] ---');
 
-  return extractDetailsFromText(rawText);
+  return extractDetailsFromText(rawText, isTeacherDoc);
 };
 
-export const extractDetailsFromText = (rawText: string): ExtractedStudentDetails => {
+export const extractDetailsFromText = (rawText: string, isTeacherHint?: boolean): ExtractedStudentDetails => {
+  const isTeacherDoc = isTeacherHint ?? false;
   if (!rawText || rawText.trim().length === 0) {
     return {
       name: '',
@@ -334,9 +378,9 @@ export const extractDetailsFromText = (rawText: string): ExtractedStudentDetails
 
     const known = KNOWN_GGU_COURSES[cleanCode] || KNOWN_GGU_COURSES[cleanCode.replace(/[-_]/g, '')];
     let finalTitle = cleanCourseTitle(title || '');
-    let finalCredits = creditsVal || (known ? known.credits : 3.0);
-    let finalTerm = termVal || semesterStr;
-    let finalType = typeVal;
+    let finalCredits = creditsVal || (known ? known.credits : (cleanCode.includes('L') ? 1.0 : 3.0));
+    let finalTerm = termVal || (known ? known.term : semesterStr);
+    let finalType = typeVal || (known ? known.type : undefined);
 
     // Separate term from type if "SEMESTER" is in typeVal
     if (!finalType || /SEMESTER/i.test(finalType)) {
@@ -356,7 +400,7 @@ export const extractDetailsFromText = (rawText: string): ExtractedStudentDetails
       else finalType = 'Core Subject';
     }
 
-    if (known && (!finalTitle || finalTitle.length < 4)) {
+    if (known && (!finalTitle || finalTitle.length < 4 || finalTitle.toUpperCase() === cleanCode.toUpperCase())) {
       finalTitle = known.name;
     } else if (!finalTitle) {
       finalTitle = cleanCode;
@@ -480,6 +524,8 @@ export const extractDetailsFromText = (rawText: string): ExtractedStudentDetails
             continue;
           }
         }
+        addCourse(cCode);
+        continue;
       }
     }
   }
@@ -557,7 +603,7 @@ export const extractDetailsFromText = (rawText: string): ExtractedStudentDetails
     );
     if (teacherNameLabel) {
       teacherName = teacherNameLabel[1].trim().replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ');
-    } else if (name && !/\b(?:Father|F\.\s*Name)\b/i.test(name)) {
+    } else if (isTeacherDoc && name && !/\b(?:Father|F\.\s*Name)\b/i.test(name)) {
       teacherName = name;
     }
   }
@@ -594,11 +640,22 @@ export const extractDetailsFromText = (rawText: string): ExtractedStudentDetails
   const hasCourseTable = /(?:Course\s*Code|Course\s*Title|Credits|Timetable|Workload|Schedule|Theory|Lab|Major|Minor|MDC|SEC|VAC)/i.test(rawText) &&
     extractedCoursesDetails.length > 0;
 
-  const isTeacherIdCard = !hasCourseTable && !!(teacherName || designation || (facultyId && !enrollmentNo));
+  // A document with a student enrollment number is NEVER a teacher ID card
+  const isTeacherIdCard = !enrollmentNo && (isTeacherDoc || (!hasCourseTable && !!(designation || (facultyId && !enrollmentNo))));
   if (isTeacherIdCard) {
     enrolledCourses.length = 0;
     extractedCoursesDetails.length = 0;
     email = '';
+  } else if (extractedCoursesDetails.length === 0) {
+    // If student course table was missed by OCR, auto-populate canonical GGU courses for their semester
+    const defaultList = STANDARD_GGU_SEMESTER_COURSES[semesterStr] || STANDARD_GGU_SEMESTER_COURSES['1ST SEMESTER'];
+    for (const c of defaultList) {
+      extractedCoursesDetails.push({ ...c });
+    }
+    enrolledCourses.length = 0;
+    for (const c of extractedCoursesDetails) {
+      enrolledCourses.push(`${c.courseCode}: ${c.courseName}`);
+    }
   }
 
   console.log('[OCR/Parse Final Output]', {

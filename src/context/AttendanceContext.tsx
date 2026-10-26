@@ -10,7 +10,11 @@ import {
   ClassScheduleItem,
   GguSelectedCourse,
 } from '../data/types';
-import { GGU_OFFICIAL_COURSE_SELECTIONS } from '../data/gguUniversityData';
+import {
+  GGU_OFFICIAL_COURSE_SELECTIONS,
+  GGU_FIRST_SEM_COURSES,
+  GGU_THIRD_SEM_COURSES,
+} from '../data/gguUniversityData';
 import { api, setAuthToken } from '../services/api';
 import { getAuthSession, clearAuthSession } from '../services/sessionStorage';
 import { hapticFeedback } from '../utils/haptics';
@@ -601,9 +605,17 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         level = ext.courseLevel || '';
         if (Array.isArray(ext.extractedCoursesDetails) && ext.extractedCoursesDetails.length > 0) {
           courses = ext.extractedCoursesDetails;
-        } else if (Array.isArray(ext.enrolledCourses)) {
+        } else if (Array.isArray(ext.enrolledCourses) && ext.enrolledCourses.length > 0) {
           courses = ext.enrolledCourses;
         }
+      }
+
+      // Safe fallback: if courses list is still empty, load standard registered courses for this student's semester
+      if (!courses || courses.length === 0) {
+        const isThirdSem =
+          /\b(?:3RD|THIRD|3)\s*(?:SEM|SEMESTER)\b/i.test(level) ||
+          (enrollment && /\/23\//.test(enrollment));
+        courses = isThirdSem ? GGU_THIRD_SEM_COURSES : GGU_FIRST_SEM_COURSES;
       }
 
       setUploadedPdfName(fileName);
