@@ -19,7 +19,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import { Colors } from '../theme/colors';
 import { useAttendance } from '../context/AttendanceContext';
 import { GguDepartmentPicker } from '../components/GguDepartmentPicker';
-import { ALL_GGU_DEPARTMENTS, GGU_FIRST_SEM_COURSES, GGU_THIRD_SEM_COURSES } from '../data/gguUniversityData';
+import { ALL_GGU_DEPARTMENTS } from '../data/gguUniversityData';
 import { api, setAuthToken } from '../services/api';
 import { saveAuthSession } from '../services/sessionStorage';
 import { getUniqueDeviceId } from '../services/deviceService';
@@ -111,13 +111,6 @@ export const AuthScreen: React.FC = () => {
 
   const handleSelectSemester = (semVal: string) => {
     setStudentRegSemester(semVal);
-    if (semVal === '3RD SEMESTER') {
-      setStudentCourseLevel('3RD SEMESTER (NEP 2020)');
-      setStudentEnrolledCourses(GGU_THIRD_SEM_COURSES);
-    } else if (semVal === '1ST SEMESTER') {
-      setStudentCourseLevel('1ST SEMESTER (NEP 2020)');
-      setStudentEnrolledCourses(GGU_FIRST_SEM_COURSES);
-    }
   };
 
   React.useEffect(() => {
@@ -134,14 +127,8 @@ export const AuthScreen: React.FC = () => {
     } else if (studentRegEnrollment) {
       if (/GGV\/23\//i.test(studentRegEnrollment) || studentRegEnrollment.includes('/23/')) {
         setStudentRegSemester('3RD SEMESTER');
-        if (studentEnrolledCourses.length === 0) {
-          setStudentEnrolledCourses(GGU_THIRD_SEM_COURSES);
-        }
       } else if (/GGV\/25\//i.test(studentRegEnrollment) || studentRegEnrollment.includes('/25/')) {
         setStudentRegSemester('1ST SEMESTER');
-        if (studentEnrolledCourses.length === 0) {
-          setStudentEnrolledCourses(GGU_FIRST_SEM_COURSES);
-        }
       }
     }
   }, [studentCourseLevel, studentRegEnrollment]);
@@ -1294,68 +1281,7 @@ export const AuthScreen: React.FC = () => {
                 </TouchableOpacity>
               </View>
 
-              {/* Quick Semester Switcher in Step 1 */}
-              <View style={{ marginTop: 10 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                  <Text style={{ fontSize: 11.5, fontWeight: '700', color: Colors.slate600 }}>
-                    Select Semester:
-                  </Text>
-                  <Text style={{ fontSize: 11, fontWeight: '600', color: brandColor }}>
-                    {studentRegSemester}
-                  </Text>
-                </View>
-                <View style={{ flexDirection: 'row', gap: 8 }}>
-                  <TouchableOpacity
-                    style={{
-                      flex: 1,
-                      paddingVertical: 8,
-                      paddingHorizontal: 10,
-                      borderRadius: 10,
-                      backgroundColor: studentRegSemester === '1ST SEMESTER' ? brandColor : Colors.white,
-                      borderWidth: 1.5,
-                      borderColor: studentRegSemester === '1ST SEMESTER' ? brandColor : Colors.slate200,
-                      alignItems: 'center',
-                    }}
-                    onPress={() => handleSelectSemester('1ST SEMESTER')}
-                    activeOpacity={0.8}
-                  >
-                    <Text
-                      style={{
-                        fontSize: 12,
-                        fontWeight: '700',
-                        color: studentRegSemester === '1ST SEMESTER' ? Colors.white : Colors.slate700,
-                      }}
-                    >
-                      1st Semester
-                    </Text>
-                  </TouchableOpacity>
 
-                  <TouchableOpacity
-                    style={{
-                      flex: 1,
-                      paddingVertical: 8,
-                      paddingHorizontal: 10,
-                      borderRadius: 10,
-                      backgroundColor: studentRegSemester === '3RD SEMESTER' ? brandColor : Colors.white,
-                      borderWidth: 1.5,
-                      borderColor: studentRegSemester === '3RD SEMESTER' ? brandColor : Colors.slate200,
-                      alignItems: 'center',
-                    }}
-                    onPress={() => handleSelectSemester('3RD SEMESTER')}
-                    activeOpacity={0.8}
-                  >
-                    <Text
-                      style={{
-                        fontSize: 12,
-                        fontWeight: '700',
-                        color: studentRegSemester === '3RD SEMESTER' ? Colors.white : Colors.slate700,
-                      }}
-                    >
-                      3rd Semester
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
 
               {/* Auto-Extracted Courses Preview */}
               {studentEnrolledCourses.length > 0 && (

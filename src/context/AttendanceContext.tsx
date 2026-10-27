@@ -12,8 +12,6 @@ import {
 } from '../data/types';
 import {
   GGU_OFFICIAL_COURSE_SELECTIONS,
-  GGU_FIRST_SEM_COURSES,
-  GGU_THIRD_SEM_COURSES,
 } from '../data/gguUniversityData';
 import { parsePdfClientSide } from '../utils/clientPdfParser';
 import { api, setAuthToken } from '../services/api';
@@ -656,9 +654,7 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         /\b(?:3RD|THIRD|3)\s*(?:SEM|SEMESTER)\b/i.test(level) ||
         (Boolean(enrollment) && /\/23\//.test(enrollment));
 
-      if (courses.length === 0) {
-        courses = isThirdSem ? GGU_THIRD_SEM_COURSES : GGU_FIRST_SEM_COURSES;
-      }
+      // Only use courses actually detected from document, no prefetched injection
 
       if (!level || !/SEM/i.test(level)) {
         level = isThirdSem ? '3RD SEMESTER (NEP 2020)' : '1ST SEMESTER (NEP 2020)';

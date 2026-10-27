@@ -293,20 +293,17 @@ export const extractDetailsFromText = (
         officeRoom: 'Room FB-12, CSIT Dept',
       };
     }
-    // If text could not be extracted but fileName contains semester hint, return appropriate semester defaults
     const combinedName = fileName.toLowerCase();
     const isThird = /\b(?:3rd|third|3)\s*(?:sem|semester)\b|\bsem[-_ ]*3\b/i.test(combinedName);
     const semesterStr = isThird ? '3RD SEMESTER' : '1ST SEMESTER';
-    const defaultList = STANDARD_GGU_SEMESTER_COURSES[semesterStr] || STANDARD_GGU_SEMESTER_COURSES['1ST SEMESTER'];
-    const courses: ExtractedCourse[] = defaultList.map((c) => ({ ...c }));
     return {
       name: '',
       enrollmentNo: '',
       email: '',
       department: 'CSIT',
       courseLevel: `${semesterStr} (NEP 2020)`,
-      enrolledCourses: courses.map((c) => `${c.courseCode}: ${c.courseName}`),
-      extractedCoursesDetails: courses,
+      enrolledCourses: [],
+      extractedCoursesDetails: [],
       rawTextPreview: '',
     };
   }
@@ -794,16 +791,6 @@ export const extractDetailsFromText = (
     if (!department) department = 'CSIT';
     if (!designation) designation = 'Assistant Professor';
     if (!facultyId) facultyId = 'EMP/2026/' + Math.floor(1000 + Math.random() * 9000);
-  } else if (extractedCoursesDetails.length === 0) {
-    // If student course table was missed by OCR, auto-populate canonical GGU courses for their semester
-    const defaultList = STANDARD_GGU_SEMESTER_COURSES[semesterStr] || STANDARD_GGU_SEMESTER_COURSES['1ST SEMESTER'];
-    for (const c of defaultList) {
-      extractedCoursesDetails.push({ ...c });
-    }
-    enrolledCourses.length = 0;
-    for (const c of extractedCoursesDetails) {
-      enrolledCourses.push(`${c.courseCode}: ${c.courseName}`);
-    }
   }
 
   console.log('[OCR/Parse Final Output]', {
