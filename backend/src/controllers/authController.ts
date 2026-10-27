@@ -649,6 +649,8 @@ export const parsePdfCourseSlip = async (
   try {
     const file = (req as any).file;
     const fileName = file?.originalname || req.body?.fileName || 'GGU_Course_Selection_Slip.pdf';
+    const docType = req.body?.docType || (req as any).body?.docType || '';
+    const isTeacher = docType === 'TEACHER_ID' || /teacher|faculty|id_card|idcard|emp/i.test(fileName);
 
     let buffer: Buffer;
     if (file && file.buffer) {
@@ -660,7 +662,7 @@ export const parsePdfCourseSlip = async (
     }
 
     const { parsePdfBuffer } = await import('../utils/pdfParser.js');
-    const extracted = await parsePdfBuffer(buffer, fileName);
+    const extracted = await parsePdfBuffer(buffer, fileName, isTeacher);
 
     res.status(200).json({
       success: true,

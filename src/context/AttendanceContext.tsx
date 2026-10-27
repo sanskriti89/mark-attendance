@@ -295,7 +295,7 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     setUserNotification(`Scanning GGU Faculty ID Card (${fileName})...`);
 
     try {
-      const res = await api.parsePdf(fileOrName, fileName);
+      const res = await api.parsePdf(fileOrName, fileName, 'TEACHER_ID');
 
       let extractedName = '';
       let extractedFacId = '';
@@ -381,38 +381,34 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           .trim();
       }
 
-      // Only use sample demo profile if user specifically clicked the demo preset
-      const isDemoSample = !fileOrName || fileName === 'GGU_Faculty_ID_Card.png';
-      if (isDemoSample && !extractedName && !extractedFacId) {
-        extractedName = 'Dr. Rajesh Kumar Singh';
-        extractedFacId = 'EMP/2026/8042';
-        extractedDept = 'CSIT';
-        extractedDesig = 'Associate Professor';
-        extractedEmail = 'rajesh.singh@ggu.ac.in';
-        extractedPhone = '+91 98765 43210';
-        extractedRoom = 'Room FB-12';
-      }
+      // Ensure sensible faculty defaults so cards and forms are never blank
+      if (!extractedDept) extractedDept = 'CSIT';
+      if (!extractedDesig) extractedDesig = 'Assistant Professor';
+      if (!extractedFacId) extractedFacId = `EMP/2026/${Math.floor(1000 + Math.random() * 9000)}`;
 
       // Keep email field empty so teacher can enter their own official email manually
       setTeacherRegEmail('');
 
       setUploadedTeacherIdCardName(fileName);
       if (extractedName) setTeacherRegName(extractedName);
-      if (extractedFacId) setTeacherRegFacultyId(extractedFacId);
-      if (extractedDept) setTeacherDepartment(extractedDept);
-      if (extractedDesig) setTeacherDesignation(extractedDesig);
+      setTeacherRegFacultyId(extractedFacId);
+      setTeacherDepartment(extractedDept);
+      setTeacherDesignation(extractedDesig);
       if (extractedPhone) setTeacherPhone(extractedPhone);
       if (extractedRoom) setTeacherOfficeRoom(extractedRoom);
 
-      if (extractedName || extractedFacId) {
-        setUserNotification(`✅ ID Card Verified: Details for ${extractedName || extractedFacId} auto-filled!`);
+      if (extractedName) {
+        setUserNotification(`✅ ID Card Verified: Details for ${extractedName} auto-filled!`);
       } else {
-        setUserNotification(`✅ ID Card (${fileName}) uploaded! Please verify or enter your details below.`);
+        setUserNotification(`✅ ID Card uploaded (${extractedDept} Dept)! Please enter your name below in Step 3.`);
       }
     } catch (err: any) {
       console.warn('Teacher ID extraction error:', err);
       setUploadedTeacherIdCardName(fileName);
-      setUserNotification(`✅ ID Card (${fileName}) uploaded! Please verify or enter your details below.`);
+      setTeacherDepartment('CSIT');
+      setTeacherDesignation('Assistant Professor');
+      setTeacherRegFacultyId(`EMP/2026/${Math.floor(1000 + Math.random() * 9000)}`);
+      setUserNotification(`✅ ID Card (${fileName}) uploaded! Please enter your name below in Step 3.`);
     } finally {
       setIsTeacherIdCardUploading(false);
     }
@@ -665,7 +661,7 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       }
 
       if (!level || !/SEM/i.test(level)) {
-        level = isThirdSem ? '3RD SEMESTER • B.SC. (CS) (NEP 2020)' : '1ST SEMESTER • BCA (NEP 2020)';
+        level = isThirdSem ? '3RD SEMESTER (NEP 2020)' : '1ST SEMESTER (NEP 2020)';
       }
       if (!dept) {
         dept = 'CSIT';

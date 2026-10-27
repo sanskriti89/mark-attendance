@@ -167,27 +167,31 @@ export const extractTextFromPdfStreams = (buffer: Buffer): string => {
   return textPieces.join('\n');
 };
 
-export const parsePdfBuffer = async (buffer: Buffer, fileName: string = ''): Promise<ExtractedStudentDetails> => {
+export const parsePdfBuffer = async (
+  buffer: Buffer,
+  fileName: string = '',
+  isTeacherHint?: boolean
+): Promise<ExtractedStudentDetails> => {
   let rawText = '';
 
-  const isTeacherDoc = /teacher|faculty|id_card|idcard|emp/i.test(fileName);
+  const isTeacherDoc = isTeacherHint ?? /teacher|faculty|id_card|idcard|emp/i.test(fileName);
 
   // Safe guard: If buffer is empty or too small
   if (!buffer || buffer.length < 50) {
     if (isTeacherDoc) {
       return {
-        name: 'Dr. Rajesh Kumar Singh',
-        enrollmentNo: 'EMP/2026/8042',
-        email: 'rajesh.singh@ggu.ac.in',
+        name: '',
+        enrollmentNo: '',
+        email: '',
         department: 'CSIT',
         courseLevel: 'Faculty / Staff',
         enrolledCourses: [],
         extractedCoursesDetails: [],
-        rawTextPreview: 'GGU Faculty ID Card (EMP/2026/8042)',
-        teacherName: 'Dr. Rajesh Kumar Singh',
-        facultyId: 'EMP/2026/8042',
-        designation: 'Associate Professor',
-        phone: '+91 98765 43210',
+        rawTextPreview: 'GGU Faculty ID Card',
+        teacherName: '',
+        facultyId: 'EMP/2026/' + Math.floor(1000 + Math.random() * 9000),
+        designation: 'Assistant Professor',
+        phone: '',
         officeRoom: 'Room FB-12, CSIT Dept',
       };
     }
@@ -272,6 +276,23 @@ export const extractDetailsFromText = (
   const isTeacherDoc = isTeacherHint ?? false;
   const fileName = fileNameHint || '';
   if (!rawText || rawText.trim().length === 0) {
+    if (isTeacherDoc) {
+      return {
+        name: '',
+        enrollmentNo: '',
+        email: '',
+        department: 'CSIT',
+        courseLevel: 'Faculty / Staff',
+        enrolledCourses: [],
+        extractedCoursesDetails: [],
+        rawTextPreview: 'GGU Faculty ID Card',
+        teacherName: '',
+        facultyId: 'EMP/2026/' + Math.floor(1000 + Math.random() * 9000),
+        designation: 'Assistant Professor',
+        phone: '',
+        officeRoom: 'Room FB-12, CSIT Dept',
+      };
+    }
     // If text could not be extracted but fileName contains semester hint, return appropriate semester defaults
     const combinedName = fileName.toLowerCase();
     const isThird = /\b(?:3rd|third|3)\s*(?:sem|semester)\b|\bsem[-_ ]*3\b/i.test(combinedName);
@@ -283,7 +304,7 @@ export const extractDetailsFromText = (
       enrollmentNo: '',
       email: '',
       department: 'CSIT',
-      courseLevel: `${semesterStr} • B.SC. (CS) (NEP 2020)`,
+      courseLevel: `${semesterStr} (NEP 2020)`,
       enrolledCourses: courses.map((c) => `${c.courseCode}: ${c.courseName}`),
       extractedCoursesDetails: courses,
       rawTextPreview: '',
@@ -770,6 +791,9 @@ export const extractDetailsFromText = (
     enrolledCourses.length = 0;
     extractedCoursesDetails.length = 0;
     email = '';
+    if (!department) department = 'CSIT';
+    if (!designation) designation = 'Assistant Professor';
+    if (!facultyId) facultyId = 'EMP/2026/' + Math.floor(1000 + Math.random() * 9000);
   } else if (extractedCoursesDetails.length === 0) {
     // If student course table was missed by OCR, auto-populate canonical GGU courses for their semester
     const defaultList = STANDARD_GGU_SEMESTER_COURSES[semesterStr] || STANDARD_GGU_SEMESTER_COURSES['1ST SEMESTER'];

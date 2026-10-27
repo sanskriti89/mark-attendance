@@ -112,7 +112,7 @@ export const api = {
       body: JSON.stringify(payload),
     }),
 
-  parsePdf: async (fileOrFormData: any, fileName?: string) => {
+  parsePdf: async (fileOrFormData: any, fileName?: string, docType?: string) => {
     try {
       let body: any;
       const headers: Record<string, string> = {};
@@ -148,7 +148,7 @@ export const api = {
                 encoding: FileSystem.EncodingType ? FileSystem.EncodingType.Base64 : 'base64',
               });
               if (base64 && base64.length > 50) {
-                body = JSON.stringify({ base64, fileName: cleanName });
+                body = JSON.stringify({ base64, fileName: cleanName, docType: docType || '' });
                 headers['Content-Type'] = 'application/json';
                 base64Sent = true;
               }
@@ -165,6 +165,9 @@ export const api = {
             name: cleanName,
             type: mime,
           } as any);
+          if (docType) {
+            formData.append('docType', docType);
+          }
           body = formData;
         }
       } else if (
@@ -175,9 +178,12 @@ export const api = {
         // Web browser File or Blob
         const formData = new FormData();
         formData.append('file', fileOrFormData, fileOrFormData.name || fileName || 'document.pdf');
+        if (docType) {
+          formData.append('docType', docType);
+        }
         body = formData;
       } else {
-        body = JSON.stringify({ fileName: fileName || 'document.pdf' });
+        body = JSON.stringify({ fileName: fileName || 'document.pdf', docType: docType || '' });
         headers['Content-Type'] = 'application/json';
       }
 

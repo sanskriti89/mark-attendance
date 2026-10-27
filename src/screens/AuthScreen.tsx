@@ -112,10 +112,10 @@ export const AuthScreen: React.FC = () => {
   const handleSelectSemester = (semVal: string) => {
     setStudentRegSemester(semVal);
     if (semVal === '3RD SEMESTER') {
-      setStudentCourseLevel('3RD SEMESTER • B.SC. (CS) (NEP 2020)');
+      setStudentCourseLevel('3RD SEMESTER (NEP 2020)');
       setStudentEnrolledCourses(GGU_THIRD_SEM_COURSES);
     } else if (semVal === '1ST SEMESTER') {
-      setStudentCourseLevel('1ST SEMESTER • BCA (NEP 2020)');
+      setStudentCourseLevel('1ST SEMESTER (NEP 2020)');
       setStudentEnrolledCourses(GGU_FIRST_SEM_COURSES);
     }
   };
@@ -932,14 +932,22 @@ export const AuthScreen: React.FC = () => {
                       <MaterialIcons name="person" size={32} color={Colors.slate400} />
                     </View>
                     <View style={styles.teacherIdInfoCol}>
-                      <Text style={styles.teacherCardName}>{teacherRegName}</Text>
-                      <Text style={styles.teacherCardDesig}>
-                        {teacherDesignation} • {teacherRegFacultyId}
+                      <Text style={styles.teacherCardName}>
+                        {teacherRegName || 'Enter Full Name in Step 3'}
                       </Text>
-                      <Text style={styles.teacherCardDept}>Dept of {teacherDepartment}</Text>
+                      <Text style={styles.teacherCardDesig}>
+                        {teacherDesignation || 'Faculty Member'} • {teacherRegFacultyId || 'FAC-ID'}
+                      </Text>
+                      <Text style={styles.teacherCardDept}>
+                        Dept of {teacherDepartment || 'CSIT'}
+                      </Text>
                       <View style={styles.teacherCardDetailsRow}>
-                        <Text style={styles.teacherCardMeta}>✉️ {teacherRegEmail}</Text>
-                        <Text style={styles.teacherCardMeta}>📞 {teacherPhone}</Text>
+                        <Text style={styles.teacherCardMeta}>
+                          ✉️ {teacherRegEmail || 'Official Email'}
+                        </Text>
+                        <Text style={styles.teacherCardMeta}>
+                          📞 {teacherPhone || 'Contact No.'}
+                        </Text>
                       </View>
                     </View>
                   </View>
@@ -1318,7 +1326,7 @@ export const AuthScreen: React.FC = () => {
                         color: studentRegSemester === '1ST SEMESTER' ? Colors.white : Colors.slate700,
                       }}
                     >
-                      1st Sem (BCA)
+                      1st Semester
                     </Text>
                   </TouchableOpacity>
 
@@ -1343,7 +1351,7 @@ export const AuthScreen: React.FC = () => {
                         color: studentRegSemester === '3RD SEMESTER' ? Colors.white : Colors.slate700,
                       }}
                     >
-                      3rd Sem (B.Sc CS)
+                      3rd Semester
                     </Text>
                   </TouchableOpacity>
                 </View>
