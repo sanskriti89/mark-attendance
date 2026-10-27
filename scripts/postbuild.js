@@ -55,11 +55,13 @@ self.addEventListener('fetch', (event) => {
 fs.writeFileSync(path.join(distDir, 'sw.js'), serviceWorker, 'utf8');
 console.log('✓ Created dist/sw.js');
 
-// 4. Copy icon.png to dist
+// 4. Copy icon.png & apple-touch-icon.png to dist
 const iconSrc = path.join(rootDir, 'assets', 'icon.png');
 if (fs.existsSync(iconSrc)) {
   fs.copyFileSync(iconSrc, path.join(distDir, 'icon.png'));
-  console.log('✓ Copied assets/icon.png -> dist/icon.png');
+  fs.copyFileSync(iconSrc, path.join(distDir, 'apple-touch-icon.png'));
+  fs.copyFileSync(iconSrc, path.join(distDir, 'apple-touch-icon-precomposed.png'));
+  console.log('✓ Copied assets/icon.png -> dist/icon.png & dist/apple-touch-icon.png');
 }
 
 // 5. Inject PWA tags into dist/index.html
@@ -75,7 +77,10 @@ if (fs.existsSync(indexPath)) {
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="AttendIQ" />
-    <link rel="apple-touch-icon" href="/icon.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="apple-touch-icon" sizes="152x152" href="/apple-touch-icon.png" />
+    <link rel="apple-touch-icon-precomposed" href="/apple-touch-icon.png" />
 `;
     html = html.replace('</head>', `${pwaHeadTags}</head>`);
   }
