@@ -53,6 +53,7 @@ import { StudentAttendanceScreen } from './src/screens/StudentAttendanceScreen';
 import { TeacherReportScreen } from './src/screens/TeacherReportScreen';
 import { ProfileModal } from './src/components/ProfileModal';
 import { ExportCsvModal } from './src/components/ExportCsvModal';
+import { PwaInstallBanner } from './src/components/PwaInstallBanner';
 import { Colors } from './src/theme/colors';
 
 /**
@@ -233,6 +234,7 @@ const MainNavigator: React.FC = () => {
         </AnimatedScreenWrapper>
         <ProfileModal />
         <ExportCsvModal />
+        <PwaInstallBanner />
       </View>
     </View>
   );

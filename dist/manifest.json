@@ -1,0 +1,18 @@
+{
+  "name": "AttendIQ - GGU Smart Attendance",
+  "short_name": "AttendIQ",
+  "description": "Smart Attendance Management System for Guru Ghasidas Vishwavidyalaya",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0F172A",
+  "theme_color": "#0F172A",
+  "icons": [
+    {
+      "src": "/icon.png",
+      "sizes": "192x192 512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
