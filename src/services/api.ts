@@ -135,7 +135,14 @@ export const api = {
         if (Platform.OS !== 'web') {
           try {
             // Read file as base64 on native for 100% guaranteed network transfer
-            const FileSystem = require('expo-file-system');
+            let FileSystem: any;
+            try {
+              FileSystem = require('expo-file-system/legacy');
+            } catch {
+              try {
+                FileSystem = require('expo-file-system');
+              } catch {}
+            }
             if (FileSystem && FileSystem.readAsStringAsync) {
               const base64 = await FileSystem.readAsStringAsync(fileOrFormData.uri, {
                 encoding: FileSystem.EncodingType ? FileSystem.EncodingType.Base64 : 'base64',
@@ -174,38 +181,41 @@ export const api = {
         headers['Content-Type'] = 'application/json';
       }
 
-      // 90s timeout to allow Render free tier to wake up gracefully from cold sleep
+      // 120s timeout to allow Render free tier to wake up gracefully from cold sleep
       const ocrBaseUrl = 'https://mark-attendance-backend.onrender.com/api';
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 90000);
+
+      const fetchWithRetry = async (url: string, retriesLeft = 1): Promise<any> => {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 120000);
+        try {
+          const res = await fetch(`${url}/auth/parse-pdf`, {
+            method: 'POST',
+            headers,
+            body,
+            signal: controller.signal,
+          });
+          clearTimeout(timeoutId);
+          return await res.json();
+        } catch (err: any) {
+          clearTimeout(timeoutId);
+          if (retriesLeft > 0) {
+            console.log(`[parsePdf retry] Waking up backend... Retrying in 2s`);
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+            return fetchWithRetry(url, retriesLeft - 1);
+          }
+          throw err;
+        }
+      };
+
       try {
-        const res = await fetch(`${ocrBaseUrl}/auth/parse-pdf`, {
-          method: 'POST',
-          headers,
-          body,
-          signal: controller.signal,
-        });
-        clearTimeout(timeoutId);
-        return await res.json();
+        return await fetchWithRetry(ocrBaseUrl, 1);
       } catch (primaryErr: any) {
-        clearTimeout(timeoutId);
         // Fallback to local / configured base URL if different
         const fallbackUrl = getApiBaseUrl();
         if (fallbackUrl !== ocrBaseUrl) {
-          const fallbackCtrl = new AbortController();
-          const fallbackTimeout = setTimeout(() => fallbackCtrl.abort(), 30000);
           try {
-            const fallbackRes = await fetch(`${fallbackUrl}/auth/parse-pdf`, {
-              method: 'POST',
-              headers,
-              body,
-              signal: fallbackCtrl.signal,
-            });
-            clearTimeout(fallbackTimeout);
-            return await fallbackRes.json();
-          } catch {
-            clearTimeout(fallbackTimeout);
-          }
+            return await fetchWithRetry(fallbackUrl, 0);
+          } catch {}
         }
         throw primaryErr;
       }

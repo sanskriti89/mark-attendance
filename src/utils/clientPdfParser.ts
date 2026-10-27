@@ -211,67 +211,146 @@ export const extractDetailsFromTextClient = (rawText: string): ClientExtractedDe
   };
 };
 
+const decodeBase64ToBytes = (b64: string): Uint8Array => {
+  if (typeof atob === 'function') {
+    try {
+      const bin = atob(b64);
+      const arr = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) {
+        arr[i] = bin.charCodeAt(i);
+      }
+      return arr;
+    } catch {}
+  }
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  const cleanB64 = b64.replace(/[^A-Za-z0-9+/=]/g, '');
+  const out: number[] = [];
+  let buffer = 0;
+  let bits = 0;
+  for (let i = 0; i < cleanB64.length; i++) {
+    const c = cleanB64.charAt(i);
+    if (c === '=') break;
+    const val = chars.indexOf(c);
+    if (val === -1) continue;
+    buffer = (buffer << 6) | val;
+    bits += 6;
+    if (bits >= 8) {
+      bits -= 8;
+      out.push((buffer >> bits) & 0xff);
+    }
+  }
+  return new Uint8Array(out);
+};
+
+export const extractDetailsFromBytes = (bytes: Uint8Array, fileName: string): ClientExtractedDetails | null => {
+  try {
+    const header = String.fromCharCode(...bytes.slice(0, 5));
+    if (!header.startsWith('%PDF')) {
+      if (fileName) {
+        return extractDetailsFromTextClient(fileName);
+      }
+      return null;
+    }
+
+    let textChunks: string[] = [];
+    let inParen = false;
+    let currentChunk = '';
+    for (let i = 0; i < bytes.length; i++) {
+      const b = bytes[i];
+      if (b === 0x28 && !inParen) { // '('
+        inParen = true;
+        currentChunk = '';
+      } else if (b === 0x29 && inParen) { // ')'
+        inParen = false;
+        if (currentChunk.trim().length > 1) {
+          textChunks.push(currentChunk.trim());
+        }
+      } else if (inParen) {
+        if (b >= 32 && b <= 126) {
+          currentChunk += String.fromCharCode(b);
+        }
+      }
+    }
+
+    const fullText = textChunks.join('\n');
+    if (fullText.length > 20 || fileName.length > 0) {
+      const details = extractDetailsFromTextClient(`${fileName}\n${fullText}`);
+      if (details.name || details.enrollmentNo || details.enrolledCourses.length > 0) {
+        return details;
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+};
+
 // Client-side PDF buffer parser: extracts readable ASCII / Latin strings and decodes text objects from PDF
+// Supports both Web (FileReader) and Native Android APK / iOS (expo-file-system)
 export const parsePdfClientSide = async (file: any): Promise<ClientExtractedDetails | null> => {
   try {
-    if (!file || typeof FileReader === 'undefined') return null;
+    if (!file) return null;
 
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onload = async (e: any) => {
+    const fileName = typeof file === 'string' ? file : file?.name || file?.fileName || '';
+
+    // 1. If a raw string was passed
+    if (typeof file === 'string') {
+      return extractDetailsFromTextClient(file);
+    }
+
+    // 2. NATIVE (Android APK / iOS): file is a DocumentPicker asset object with uri
+    if (typeof file === 'object' && file.uri) {
+      try {
+        let FileSystem: any;
         try {
-          const buffer = e.target.result;
-          if (!buffer) return resolve(null);
-
-          const bytes = new Uint8Array(buffer);
-          // Check if valid PDF (starts with %PDF)
-          const header = String.fromCharCode(...bytes.slice(0, 5));
-          if (!header.startsWith('%PDF')) {
-            return resolve(null);
-          }
-
-          let fullText = '';
-
-          // 1. Extract plain text literals in PDF parentheses (text) Tj / TJ
-          let textChunks: string[] = [];
-          let inParen = false;
-          let currentChunk = '';
-          for (let i = 0; i < bytes.length; i++) {
-            const b = bytes[i];
-            if (b === 0x28 && !inParen) { // '('
-              inParen = true;
-              currentChunk = '';
-            } else if (b === 0x29 && inParen) { // ')'
-              inParen = false;
-              if (currentChunk.trim().length > 1) {
-                textChunks.push(currentChunk.trim());
-              }
-            } else if (inParen) {
-              if (b >= 32 && b <= 126) {
-                currentChunk += String.fromCharCode(b);
-              }
-            }
-          }
-
-          fullText = textChunks.join('\n');
-          const fileName = file?.name || '';
-
-          // If plain text extraction found keywords or fileName indicates semester
-          if (fullText.length > 20 || fileName.length > 0) {
-            const details = extractDetailsFromTextClient(`${fileName}\n${fullText}`);
-            if (details.name || details.enrollmentNo || details.enrolledCourses.length > 0) {
-              return resolve(details);
-            }
-          }
-
-          resolve(null);
+          FileSystem = require('expo-file-system/legacy');
         } catch {
-          resolve(null);
+          try {
+            FileSystem = require('expo-file-system');
+          } catch {}
         }
-      };
-      reader.onerror = () => resolve(null);
-      reader.readAsArrayBuffer(file);
-    });
+        if (FileSystem && FileSystem.readAsStringAsync) {
+          const base64 = await FileSystem.readAsStringAsync(file.uri, {
+            encoding: FileSystem.EncodingType ? FileSystem.EncodingType.Base64 : 'base64',
+          });
+          if (base64 && base64.length > 50) {
+            const bytes = decodeBase64ToBytes(base64);
+            const extracted = extractDetailsFromBytes(bytes, fileName);
+            if (extracted && (extracted.name || extracted.enrollmentNo || extracted.enrolledCourses.length > 0)) {
+              return extracted;
+            }
+          }
+        }
+      } catch (nativeErr) {
+        console.log('[Native Client PDF Parse Skipped]', nativeErr);
+      }
+    }
+
+    // 3. WEB (Browser File or Blob)
+    if (typeof FileReader !== 'undefined' && (file instanceof Blob || (file.name && file.size !== undefined))) {
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (e: any) => {
+          try {
+            const buffer = e.target.result;
+            if (!buffer) return resolve(null);
+            const bytes = new Uint8Array(buffer);
+            resolve(extractDetailsFromBytes(bytes, fileName));
+          } catch {
+            resolve(null);
+          }
+        };
+        reader.onerror = () => resolve(null);
+        reader.readAsArrayBuffer(file);
+      });
+    }
+
+    // 4. Fallback: extract any info from file name if available
+    if (fileName) {
+      return extractDetailsFromTextClient(fileName);
+    }
+
+    return null;
   } catch {
     return null;
   }

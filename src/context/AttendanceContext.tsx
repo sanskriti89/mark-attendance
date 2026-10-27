@@ -647,18 +647,24 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         }
       }
 
-      // Determine semester accurately from fileName, extracted level, or enrollment number
+      // Determine semester accurately from fileName, extracted level, course codes, or enrollment number
+      const hasThirdSemCourse = courses.some((c: any) => {
+        const str = typeof c === 'string' ? c : `${c?.courseCode || ''} ${c?.courseName || ''}`;
+        return /\b(?:CSC-?3|SEC-?3|GEC-?3|VAC-?3|301|302|303)\b/i.test(str);
+      });
+
       const isThirdSem =
+        hasThirdSemCourse ||
         /\b(?:3RD|THIRD|3)\s*(?:SEM|SEMESTER)\b/i.test(fileName) ||
         /\bSEM[-_ ]*3\b/i.test(fileName) ||
         /\b(?:3RD|THIRD|3)\s*(?:SEM|SEMESTER)\b/i.test(level) ||
-        (enrollment && /\/23\//.test(enrollment));
+        (Boolean(enrollment) && /\/23\//.test(enrollment));
 
       if (courses.length === 0) {
         courses = isThirdSem ? GGU_THIRD_SEM_COURSES : GGU_FIRST_SEM_COURSES;
       }
 
-      if (!level) {
+      if (!level || !/SEM/i.test(level)) {
         level = isThirdSem ? '3RD SEMESTER • B.SC. (CS) (NEP 2020)' : '1ST SEMESTER • BCA (NEP 2020)';
       }
       if (!dept) {
