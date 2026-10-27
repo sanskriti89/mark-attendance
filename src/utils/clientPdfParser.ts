@@ -254,10 +254,11 @@ export const parsePdfClientSide = async (file: any): Promise<ClientExtractedDeta
           }
 
           fullText = textChunks.join('\n');
+          const fileName = file?.name || '';
 
-          // If plain text extraction found keywords
-          if (fullText.length > 50 && (/GGV/i.test(fullText) || /Name/i.test(fullText) || /Course/i.test(fullText))) {
-            const details = extractDetailsFromTextClient(fullText);
+          // If plain text extraction found keywords or fileName indicates semester
+          if (fullText.length > 20 || fileName.length > 0) {
+            const details = extractDetailsFromTextClient(`${fileName}\n${fullText}`);
             if (details.name || details.enrollmentNo || details.enrolledCourses.length > 0) {
               return resolve(details);
             }

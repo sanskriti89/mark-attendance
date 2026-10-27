@@ -3,7 +3,6 @@ node_modules/
 
 # Expo & Web
 .expo/
-dist/
 web-build/
 
 # Environment variables

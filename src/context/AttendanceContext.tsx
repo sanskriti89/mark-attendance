@@ -647,12 +647,22 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         }
       }
 
-      // ONLY populate semester fallback courses if student identity (name or enrollment) was detected
-      if (courses.length === 0 && (name || enrollment)) {
-        const isThirdSem =
-          /\b(?:3RD|THIRD|3)\s*(?:SEM|SEMESTER)\b/i.test(level) ||
-          (enrollment && /\/23\//.test(enrollment));
+      // Determine semester accurately from fileName, extracted level, or enrollment number
+      const isThirdSem =
+        /\b(?:3RD|THIRD|3)\s*(?:SEM|SEMESTER)\b/i.test(fileName) ||
+        /\bSEM[-_ ]*3\b/i.test(fileName) ||
+        /\b(?:3RD|THIRD|3)\s*(?:SEM|SEMESTER)\b/i.test(level) ||
+        (enrollment && /\/23\//.test(enrollment));
+
+      if (courses.length === 0) {
         courses = isThirdSem ? GGU_THIRD_SEM_COURSES : GGU_FIRST_SEM_COURSES;
+      }
+
+      if (!level) {
+        level = isThirdSem ? '3RD SEMESTER • B.SC. (CS) (NEP 2020)' : '1ST SEMESTER • BCA (NEP 2020)';
+      }
+      if (!dept) {
+        dept = 'CSIT';
       }
 
       setUploadedPdfName(fileName);
