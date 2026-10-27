@@ -119,22 +119,55 @@ export const api = {
 
       if (typeof FormData !== 'undefined' && fileOrFormData instanceof FormData) {
         body = fileOrFormData;
+      } else if (fileOrFormData && typeof fileOrFormData === 'object' && fileOrFormData.uri) {
+        // React Native Mobile asset (Android APK / iOS)
+        const cleanName = fileOrFormData.name || fileName || 'document.pdf';
+        const mime =
+          fileOrFormData.mimeType ||
+          fileOrFormData.type ||
+          (cleanName.toLowerCase().endsWith('.png')
+            ? 'image/png'
+            : cleanName.toLowerCase().endsWith('.jpg') || cleanName.toLowerCase().endsWith('.jpeg')
+            ? 'image/jpeg'
+            : 'application/pdf');
+
+        let base64Sent = false;
+        if (Platform.OS !== 'web') {
+          try {
+            // Read file as base64 on native for 100% guaranteed network transfer
+            const FileSystem = require('expo-file-system');
+            if (FileSystem && FileSystem.readAsStringAsync) {
+              const base64 = await FileSystem.readAsStringAsync(fileOrFormData.uri, {
+                encoding: FileSystem.EncodingType ? FileSystem.EncodingType.Base64 : 'base64',
+              });
+              if (base64 && base64.length > 50) {
+                body = JSON.stringify({ base64, fileName: cleanName });
+                headers['Content-Type'] = 'application/json';
+                base64Sent = true;
+              }
+            }
+          } catch (e) {
+            console.log('[Native base64 skipped]', e);
+          }
+        }
+
+        if (!base64Sent) {
+          const formData = new FormData();
+          formData.append('file', {
+            uri: fileOrFormData.uri,
+            name: cleanName,
+            type: mime,
+          } as any);
+          body = formData;
+        }
       } else if (
         fileOrFormData &&
         ((typeof Blob !== 'undefined' && fileOrFormData instanceof Blob) ||
           (fileOrFormData.name && fileOrFormData.size !== undefined))
       ) {
+        // Web browser File or Blob
         const formData = new FormData();
         formData.append('file', fileOrFormData, fileOrFormData.name || fileName || 'document.pdf');
-        body = formData;
-      } else if (fileOrFormData && typeof fileOrFormData === 'object' && fileOrFormData.uri) {
-        // React Native mobile asset
-        const formData = new FormData();
-        formData.append('file', {
-          uri: fileOrFormData.uri,
-          name: fileOrFormData.name || fileName || 'slip.pdf',
-          type: fileOrFormData.mimeType || 'application/pdf',
-        } as any);
         body = formData;
       } else {
         body = JSON.stringify({ fileName: fileName || 'document.pdf' });
