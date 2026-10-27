@@ -104,6 +104,7 @@ export const AuthScreen: React.FC = () => {
   } : null);
 
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [isCheckingAccount, setIsCheckingAccount] = useState(false);
   const [loginErrorMessage, setLoginErrorMessage] = useState<string | null>(null);
 
   // Student Semester Selection State (1st Sem by default for new students)
@@ -451,7 +452,7 @@ export const AuthScreen: React.FC = () => {
     }
   };
 
-  const handleRegisterNext = () => {
+  const handleRegisterNext = async () => {
     if (isTeacher) {
       if (!teacherRegName || !teacherRegFacultyId || !teacherRegPassword || !teacherDepartment) {
         Alert.alert(
@@ -466,6 +467,39 @@ export const AuthScreen: React.FC = () => {
           'Please enter your email address so you can receive verification codes.'
         );
         return;
+      }
+
+      const cleanFacultyId = teacherRegFacultyId.trim().toUpperCase();
+      const cleanEmail = teacherRegEmail.trim().toLowerCase();
+
+      // Check if Faculty ID or Email is already registered
+      setIsCheckingAccount(true);
+      try {
+        const idCheck = await api.lookupUser(cleanFacultyId);
+        if (idCheck && idCheck.success && idCheck.user) {
+          setIsCheckingAccount(false);
+          showErrorModal(
+            'Already Registered',
+            `Is Faculty ID (${cleanFacultyId}) se pehle se account bana hua hai.\n\nDubara naya account register nahi kiya ja sakta. Kripya Login karein ya Forgot Password use karein.`,
+            'warning'
+          );
+          return;
+        }
+
+        const emailCheck = await api.lookupUser(cleanEmail);
+        if (emailCheck && emailCheck.success && emailCheck.user) {
+          setIsCheckingAccount(false);
+          showErrorModal(
+            'Email Already Registered',
+            `Is Email (${cleanEmail}) se pehle se account bana hua hai.\n\nDubara naya account register nahi kiya ja sakta. Kripya Login karein ya Forgot Password use karein.`,
+            'warning'
+          );
+          return;
+        }
+      } catch (err) {
+        console.warn('Faculty account pre-check error:', err);
+      } finally {
+        setIsCheckingAccount(false);
       }
     } else {
       if (!studentRegName || !studentRegEnrollment || !studentRegPassword || !studentDepartment) {
@@ -482,6 +516,40 @@ export const AuthScreen: React.FC = () => {
         );
         return;
       }
+
+      const cleanEnrollment = studentRegEnrollment.trim().toUpperCase();
+      const cleanEmail = studentRegEmail.trim().toLowerCase();
+
+      // Check if Enrollment Number or Email is already registered
+      setIsCheckingAccount(true);
+      try {
+        const idCheck = await api.lookupUser(cleanEnrollment);
+        if (idCheck && idCheck.success && idCheck.user) {
+          setIsCheckingAccount(false);
+          showErrorModal(
+            'Already Registered',
+            `Is Enrollment Number (${cleanEnrollment}) se pehle se account bana hua hai.\n\nDubara naya ID register nahi ho sakta. Kripya Login tab par jaakar Log In karein ya Forgot Password use karein.`,
+            'warning'
+          );
+          return;
+        }
+
+        const emailCheck = await api.lookupUser(cleanEmail);
+        if (emailCheck && emailCheck.success && emailCheck.user) {
+          setIsCheckingAccount(false);
+          showErrorModal(
+            'Email Already Registered',
+            `Is Email (${cleanEmail}) se pehle se account bana hua hai.\n\nDubara naya ID register nahi ho sakta. Kripya Login tab par jaakar Log In karein ya Forgot Password use karein.`,
+            'warning'
+          );
+          return;
+        }
+      } catch (err) {
+        console.warn('Student account pre-check error:', err);
+      } finally {
+        setIsCheckingAccount(false);
+      }
+
       const isPg = studentCourseLevel === 'PG';
       let degreeName = 'B.SC. (CS)';
       if (isPg) {
@@ -1191,14 +1259,27 @@ export const AuthScreen: React.FC = () => {
 
               {/* Continue Button */}
               <TouchableOpacity
-                style={[styles.primaryButton, { backgroundColor: brandColor, marginTop: 12 }]}
+                style={[
+                  styles.primaryButton,
+                  { backgroundColor: brandColor, marginTop: 12 },
+                  isCheckingAccount && { opacity: 0.7 },
+                ]}
                 onPress={handleRegisterNext}
                 activeOpacity={0.85}
+                disabled={isCheckingAccount}
               >
-                <Text style={styles.primaryButtonText}>Continue to Verification</Text>
-                <MaterialIcons name="arrow-forward" size={18} color={Colors.white} />
+                {isCheckingAccount ? (
+                  <>
+                    <ActivityIndicator size="small" color={Colors.white} />
+                    <Text style={styles.primaryButtonText}>Checking Database...</Text>
+                  </>
+                ) : (
+                  <>
+                    <Text style={styles.primaryButtonText}>Continue to Verification</Text>
+                    <MaterialIcons name="arrow-forward" size={18} color={Colors.white} />
+                  </>
+                )}
               </TouchableOpacity>
-
               {/* Back to Login Link */}
               <TouchableOpacity
                 style={styles.switchAuthRow}
@@ -1606,14 +1687,27 @@ export const AuthScreen: React.FC = () => {
 
               {/* Bottom Action Button */}
               <TouchableOpacity
-                style={[styles.primaryButton, { backgroundColor: brandColor, marginTop: 12 }]}
+                style={[
+                  styles.primaryButton,
+                  { backgroundColor: brandColor, marginTop: 12 },
+                  isCheckingAccount && { opacity: 0.7 },
+                ]}
                 onPress={handleRegisterNext}
                 activeOpacity={0.85}
+                disabled={isCheckingAccount}
               >
-                <Text style={styles.primaryButtonText}>Continue to Verification</Text>
-                <MaterialIcons name="arrow-forward" size={18} color={Colors.white} />
+                {isCheckingAccount ? (
+                  <>
+                    <ActivityIndicator size="small" color={Colors.white} />
+                    <Text style={styles.primaryButtonText}>Checking Database...</Text>
+                  </>
+                ) : (
+                  <>
+                    <Text style={styles.primaryButtonText}>Continue to Verification</Text>
+                    <MaterialIcons name="arrow-forward" size={18} color={Colors.white} />
+                  </>
+                )}
               </TouchableOpacity>
-
               {/* Back to Login Link */}
               <TouchableOpacity
                 style={styles.switchAuthRow}

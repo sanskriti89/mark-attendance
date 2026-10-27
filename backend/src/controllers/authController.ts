@@ -64,29 +64,45 @@ export const registerStudent = async (
       return;
     }
 
-    let student = await User.findOne({
-      $or: [{ email: email.toLowerCase() }, { enrollmentNo: enrollmentNo.toUpperCase() }],
+    const cleanEnrollment = String(enrollmentNo).trim().toUpperCase();
+    const cleanEmail = String(email).trim().toLowerCase();
+
+    // 1. Block duplicate enrollment number registration
+    const existingEnrollment = await User.findOne({
+      $or: [
+        { enrollmentNo: cleanEnrollment },
+        { enrollmentNo: String(enrollmentNo).trim() },
+      ],
     });
 
-    if (student) {
-      student.name = name;
-      student.password = password;
-      student.department = department;
-      if (courseLevel) student.courseLevel = courseLevel;
-      if (enrolledCourses) student.enrolledCourses = enrolledCourses;
-      await student.save();
-    } else {
-      student = await User.create({
-        role: 'STUDENT',
-        name,
-        enrollmentNo: enrollmentNo.toUpperCase(),
-        email: email.toLowerCase(),
-        password,
-        department,
-        courseLevel: courseLevel || 'UG - Bachelor of Science (Hons)',
-        enrolledCourses: enrolledCourses || [],
+    if (existingEnrollment) {
+      res.status(409).json({
+        success: false,
+        message: `Is Enrollment Number (${cleanEnrollment}) se pehle se account bana hua hai. Dubara naya ID register nahi kiya ja sakta. Kripya Login karein ya Forgot Password use karein.`,
       });
+      return;
     }
+
+    // 2. Block duplicate email registration
+    const existingEmail = await User.findOne({ email: cleanEmail });
+    if (existingEmail) {
+      res.status(409).json({
+        success: false,
+        message: `Is Email (${cleanEmail}) se pehle se account bana hua hai. Dubara naya ID register nahi kiya ja sakta. Kripya Login karein ya Forgot Password use karein.`,
+      });
+      return;
+    }
+
+    const student = await User.create({
+      role: 'STUDENT',
+      name: String(name).trim(),
+      enrollmentNo: cleanEnrollment,
+      email: cleanEmail,
+      password,
+      department: String(department).trim(),
+      courseLevel: courseLevel || 'UG - Bachelor of Science (Hons)',
+      enrolledCourses: enrolledCourses || [],
+    });
 
     const token = generateToken(student);
 
@@ -138,36 +154,50 @@ export const registerTeacher = async (
       return;
     }
 
-    let teacher = await User.findOne({
-      $or: [{ email: email.toLowerCase() }, { facultyId: facultyId.toUpperCase() }],
+    const cleanFacultyId = String(facultyId).trim().toUpperCase();
+    const cleanEmail = String(email).trim().toLowerCase();
+
+    // 1. Block duplicate faculty ID registration
+    const existingFaculty = await User.findOne({
+      $or: [
+        { facultyId: cleanFacultyId },
+        { facultyId: String(facultyId).trim() },
+      ],
     });
 
-    if (teacher) {
-      teacher.name = name;
-      teacher.password = password;
-      teacher.department = department;
-      if (designation) teacher.designation = designation;
-      if (phone) teacher.phone = phone;
-      if (officeRoom) teacher.officeRoom = officeRoom;
-      if (coursesTaught) teacher.coursesTaught = coursesTaught;
-      await teacher.save();
-    } else {
-      teacher = await User.create({
-        role: 'TEACHER',
-        name,
-        facultyId: facultyId.toUpperCase(),
-        email: email.toLowerCase(),
-        password,
-        department,
-        designation: designation || 'Assistant Professor',
-        phone: phone || '',
-        officeRoom: officeRoom || '',
-        coursesTaught: coursesTaught || [],
+    if (existingFaculty) {
+      res.status(409).json({
+        success: false,
+        message: `Is Faculty ID (${cleanFacultyId}) se pehle se account bana hua hai. Dubara naya ID register nahi kiya ja sakta. Kripya Login karein.`,
       });
+      return;
     }
 
+    // 2. Block duplicate email registration
+    const existingEmail = await User.findOne({ email: cleanEmail });
+    if (existingEmail) {
+      res.status(409).json({
+        success: false,
+        message: `Is Email (${cleanEmail}) se pehle se account bana hua hai. Dubara naya ID register nahi kiya ja sakta. Kripya Login karein.`,
+      });
+      return;
+    }
+
+    const teacher = await User.create({
+      role: 'TEACHER',
+      name: String(name).trim(),
+      facultyId: cleanFacultyId,
+      email: cleanEmail,
+      password,
+      department: String(department).trim(),
+      designation: designation || 'Assistant Professor',
+      phone: phone || '',
+      officeRoom: officeRoom || '',
+      coursesTaught: coursesTaught || [],
+    });
+
     if (Array.isArray(schedules) && schedules.length > 0) {
-      const cleanFacId = facultyId.toUpperCase();
+      const cleanFacId = cleanFacultyId;
       await Schedule.deleteMany({
         targetRole: 'TEACHER',
         targetId: { $in: [cleanFacId, facultyId, `GGV/${cleanFacId}`] },
@@ -180,8 +210,8 @@ export const registerTeacher = async (
         timeSlot: s.timeSlot || '10:00 AM - 11:00 AM',
         dayOfWeek: s.dayOfWeek || 'Today',
         classroom: s.classroom || 'CSIT Room FB',
-        teacherName: name,
-        department: department,
+        teacherName: String(name).trim(),
+        department: String(department).trim(),
         courseType: s.courseType || 'Major',
         credits: s.credits || 3,
         isOngoing: !!s.isOngoing,
@@ -204,8 +234,6 @@ export const registerTeacher = async (
         facultyId: teacher.facultyId,
         department: teacher.department,
         designation: teacher.designation,
-        phone: teacher.phone,
-        officeRoom: teacher.officeRoom,
       },
     });
   } catch (error) {
